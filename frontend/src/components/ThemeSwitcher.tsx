@@ -8,10 +8,10 @@ import { useTranslation } from 'react-i18next';
 const ThemeSwitcher: React.FC = () => {
   const { t } = useTranslation();
   
-  // 从 localStorage 获取初始主题，如果不存在则默认为 'light'
+  // 从 localStorage 获取初始主题，如果不存在则默认为 'dark'
   const [theme, setTheme] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
-    return savedTheme || 'light';
+    return savedTheme || 'dark';
   });
 
   // 使用 useEffect 监听 theme 状态的变化，并应用到 <html> 元素上
