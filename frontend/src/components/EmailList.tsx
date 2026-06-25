@@ -178,6 +178,13 @@ const EmailList: React.FC<EmailListProps> = ({
                 <div className="text-sm truncate">
                   {email.subject || t('email.noSubject')}
                 </div>
+                {email.extractedCode && (
+                  <div className="mt-1">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded bg-primary/10 text-primary text-xs font-mono">
+                      {t('email.verificationCode')}: {email.extractedCode}
+                    </span>
+                  </div>
+                )}
               </li>
               {selectedEmailId === email.id && (
                 <li className="border-t border-muted">

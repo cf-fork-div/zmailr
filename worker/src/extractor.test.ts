@@ -12,6 +12,22 @@ describe('matchGenericCode', () => {
     assert.equal(matchGenericCode('验证码: 556677'), '556677');
   });
 
+  it('extracts digits after Chinese 为/是 connectors', () => {
+    assert.equal(matchGenericCode('验证码为：123456'), '123456');
+    assert.equal(matchGenericCode('您的验证码是 654321'), '654321');
+  });
+
+  it('extracts standalone 6-digit code when subject hints verification', () => {
+    assert.equal(
+      matchGenericCode(
+        'Hyperdown 验证码\n请使用以下验证码完成注册\n887766',
+        '请使用以下验证码完成注册\n887766',
+        'Hyperdown 验证码'
+      ),
+      '887766'
+    );
+  });
+
   it('returns null when no match', () => {
     assert.equal(matchGenericCode('Hello world'), null);
   });

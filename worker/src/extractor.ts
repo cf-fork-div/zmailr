@@ -1,8 +1,14 @@
 import { D1Database } from '@cloudflare/workers-types';
 import { getEnabledExtractRules } from './database';
 
-/** 通用兜底正则 */
-export const GENERIC_CODE_REGEX = /(?:code|验证码|verification|pin)[:\s]*(\d{4,8})/i;
+/** 通用兜底正则（支持「验证码为/是：123456」等常见中文格式） */
+export const GENERIC_CODE_REGEX =
+  /(?:code|验证码|verification|pin|otp)(?:[是为])?[：:\s]*(\d{4,8})/i;
+
+/** 主题含验证码语义时，正文中独立的 6 位数字 */
+const SUBJECT_VERIFICATION_HINT =
+  /(?:验证码|verification|verify|code|otp)/i;
+const STANDALONE_SIX_DIGIT = /\b(\d{6})\b/;
 
 /**
  * 从邮件正文中提取验证码
@@ -24,12 +30,23 @@ export async function extractCode(
     if (code) return code;
   }
 
-  return matchGenericCode(combined);
+  return matchGenericCode(combined, text, subject);
 }
 
-export function matchGenericCode(text: string): string | null {
-  const genericMatch = text.match(GENERIC_CODE_REGEX);
-  return genericMatch ? genericMatch[1] : null;
+export function matchGenericCode(
+  combined: string,
+  body?: string,
+  subject?: string
+): string | null {
+  const genericMatch = combined.match(GENERIC_CODE_REGEX);
+  if (genericMatch) return genericMatch[1];
+
+  if (body && subject && SUBJECT_VERIFICATION_HINT.test(subject)) {
+    const standalone = body.match(STANDALONE_SIX_DIGIT);
+    if (standalone) return standalone[1];
+  }
+
+  return null;
 }
 
 export function matchWithRegex(text: string, pattern: string): string | null {

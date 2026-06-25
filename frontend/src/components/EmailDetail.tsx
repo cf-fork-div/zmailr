@@ -283,6 +283,28 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ emailId, onClose }) => {
             </div>
           </div>
           
+          {email.extractedCode && (
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
+              <div>
+                <p className="text-sm text-muted-foreground">{t('email.verificationCode')}</p>
+                <p className="text-2xl font-mono font-semibold tracking-widest text-primary">
+                  {email.extractedCode}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(email.extractedCode!);
+                  showSuccessMessage(t('common.copied'));
+                }}
+                className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 shrink-0"
+              >
+                <i className="fas fa-copy"></i>
+                {t('common.copy')}
+              </button>
+            </div>
+          )}
+
           {/* 分隔线 */}
           <hr />
           

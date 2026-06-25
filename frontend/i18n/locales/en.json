@@ -95,7 +95,8 @@
     "notFound": "Email not found or has been deleted",
     "selectEmailPrompt": "Select an email to view details",
     "message": "message",
-    "messages": "messages"
+    "messages": "messages",
+    "verificationCode": "Verification Code"
   },
   "settings": {
     "language": "Language",
