@@ -1,6 +1,7 @@
+import { D1Database } from '@cloudflare/workers-types';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { Env} from './types';
+import { Env, ApiAuthContext, TokenScope, User } from './types';
 import { 
   createMailbox, 
   getMailbox, 
@@ -23,19 +24,48 @@ import {
   deleteExtractRule,
   listSentEmails,
   getAdminStats,
+  listUserTokens,
+  createUserToken,
+  deleteUserToken,
+  getDailyUsage,
+  checkSendQuota,
+  incrementSendUsage,
+  incrementLeaseUsage,
+  isMailboxOwnedByUser,
+  listUsers,
+  createUser,
+  updateUser,
+  deleteUser,
 } from './database';
 import { generateRandomAddress, getMailDomain, parseMailboxAddress, getCurrentTimestamp, validateSendFromAddress } from './utils';
-import { authenticateApiToken, isAdminAuthenticated, verifyAdminPassword, createAdminSessionCookie, clearAdminSessionCookie } from './auth';
+import {
+  authenticateApiToken,
+  hasScope,
+  isAdminAuthenticated,
+  verifyAdminPassword,
+  createAdminSessionCookie,
+  clearAdminSessionCookie,
+  getAuthenticatedUser,
+  authenticateUserLogin,
+  createUserSessionCookie,
+  clearUserSessionCookie,
+} from './auth';
 import { sendMail } from './sender';
 import { getAdminHtml } from './admin';
 import { getBuiltinExtractRules } from './extractor';
 
+type AppVariables = {
+  auth?: ApiAuthContext;
+  user?: User;
+};
+
 // 创建 Hono 应用
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 // 添加 CORS 中间件
 app.use('/*', cors({
-  origin: '*',
+  origin: (origin) => origin || '*',
+  credentials: true,
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
   maxAge: 86400,
@@ -287,20 +317,194 @@ app.delete('/api/emails/:id', async (c) => {
   }
 });
 
+// ─── 用户认证（Web 会话） ─────────────────────────────────────
+
+async function requireUserSession(c: any): Promise<Response | null> {
+  const user = await getAuthenticatedUser(c.env.DB, c.req.raw, c.env);
+  if (!user) {
+    return c.json({ success: false, error: '未登录' }, 401);
+  }
+  c.set('user', user);
+  return null;
+}
+
+app.post('/api/auth/login', async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.username || !body.password) {
+      return c.json({ success: false, error: '缺少用户名或密码' }, 400);
+    }
+    const user = await authenticateUserLogin(c.env.DB, String(body.username), String(body.password));
+    if (!user) {
+      return c.json({ success: false, error: '用户名或密码错误' }, 401);
+    }
+    const cookie = await createUserSessionCookie(c.env, user.id);
+    return c.json({ success: true, user: { id: user.id, username: user.username, role: user.role } }, 200, { 'Set-Cookie': cookie });
+  } catch (error) {
+    console.error('登录失败:', error);
+    return c.json({ success: false, error: '登录失败' }, 500);
+  }
+});
+
+app.post('/api/auth/logout', (c) => {
+  return c.json({ success: true }, 200, { 'Set-Cookie': clearUserSessionCookie() });
+});
+
+app.get('/api/auth/me', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const usage = await getDailyUsage(c.env.DB, user.id);
+  return c.json({
+    success: true,
+    user: {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      dailySendQuota: user.dailySendQuota,
+    },
+    usage: {
+      sendCount: usage.sendCount,
+      leaseCount: usage.leaseCount,
+      usageDate: usage.usageDate,
+    },
+  });
+});
+
+// ─── 用户 Token 管理（会话鉴权） ─────────────────────────────
+
+app.get('/api/user/tokens', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const tokens = await listUserTokens(c.env.DB, user.id);
+  return c.json({ success: true, tokens });
+});
+
+app.post('/api/user/tokens', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const body = await c.req.json();
+  const expiresInDays = Math.min(Math.max(parseInt(body.expiresInDays) || 30, 1), 365);
+  const validScopes: TokenScope[] = ['lease', 'mail', 'send'];
+  const scopes: TokenScope[] = Array.isArray(body.scopes)
+    ? body.scopes.filter((s: string) => validScopes.includes(s as TokenScope))
+    : validScopes;
+  if (scopes.length === 0) {
+    return c.json({ success: false, error: '至少选择一个 scope' }, 400);
+  }
+  const token = await createUserToken(c.env.DB, user.id, {
+    name: body.name,
+    expiresInDays,
+    scopes,
+  });
+  return c.json({ success: true, token });
+});
+
+app.delete('/api/user/tokens/:id', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const ok = await deleteUserToken(c.env.DB, user.id, parseInt(c.req.param('id'), 10));
+  if (!ok) return c.json({ success: false, error: 'Token 不存在' }, 404);
+  return c.json({ success: true });
+});
+
+// ─── Web 发信（会话鉴权 + 配额） ─────────────────────────────
+
+async function resolveFromAddress(
+  db: D1Database,
+  from: string | undefined,
+  domain: string,
+  userId: number
+): Promise<{ ok: true; fromEmail?: string } | { ok: false; error: string }> {
+  if (from == null || from === '') {
+    return { ok: true };
+  }
+  const validated = validateSendFromAddress(String(from), domain);
+  if (!validated.ok) {
+    return validated;
+  }
+  const owned = await isMailboxOwnedByUser(db, validated.localPart, userId);
+  if (!owned) {
+    const mailbox = await getMailbox(db, validated.localPart);
+    if (!mailbox) {
+      return { ok: false, error: 'from 邮箱不存在或已过期' };
+    }
+  }
+  return { ok: true, fromEmail: validated.fromEmail };
+}
+
+app.post('/api/user/send', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+
+  try {
+    const body = await c.req.json();
+    if (!body.to || !body.subject) {
+      return c.json({ success: false, error: '缺少 to 或 subject 参数' }, 400);
+    }
+    if (!body.text && !body.html) {
+      return c.json({ success: false, error: '缺少 text 或 html 内容' }, 400);
+    }
+
+    const quotaCheck = await checkSendQuota(c.env.DB, user.id, user.dailySendQuota);
+    if (!quotaCheck.ok) {
+      return c.json({ success: false, error: quotaCheck.error }, 429);
+    }
+
+    const domain = getMailDomain(c.env);
+    const fromResult = await resolveFromAddress(c.env.DB, body.from, domain, user.id);
+    if (!fromResult.ok) {
+      return c.json({ success: false, error: fromResult.error }, 400);
+    }
+
+    const result = await sendMail(c.env.DB, c.env, {
+      to: body.to,
+      subject: body.subject,
+      text: body.text,
+      html: body.html,
+      from: fromResult.fromEmail,
+      userId: user.id,
+    });
+
+    if (!result.success) {
+      return c.json({ success: false, error: result.error }, 502);
+    }
+
+    await incrementSendUsage(c.env.DB, user.id);
+    return c.json({ success: true, sentEmailId: result.sentEmailId });
+  } catch (error) {
+    console.error('Web 发信失败:', error);
+    return c.json({
+      success: false,
+      error: '发送邮件失败',
+      message: error instanceof Error ? error.message : String(error),
+    }, 500);
+  }
+});
+
 // ─── 程序化 API（需 Bearer Token 鉴权，不影响现有 Web 前端路由） ───
 
-async function requireApiToken(c: any): Promise<Response | null> {
-  const ok = await authenticateApiToken(c.env.DB, c.req.raw);
-  if (!ok) {
+async function requireApiAuth(c: any, scope?: TokenScope): Promise<Response | null> {
+  const auth = await authenticateApiToken(c.env.DB, c.req.raw);
+  if (!auth) {
     return c.json({ success: false, error: '未授权，请提供有效的 Bearer Token' }, 401);
   }
+  if (scope && !hasScope(auth, scope)) {
+    return c.json({ success: false, error: `缺少 ${scope} 权限` }, 403);
+  }
+  c.set('auth', auth);
   return null;
 }
 
 // 租用临时邮箱
 app.post('/api/lease', async (c) => {
-  const authErr = await requireApiToken(c);
+  const authErr = await requireApiAuth(c, 'lease');
   if (authErr) return authErr;
+  const auth = c.get('auth')!;
 
   try {
     const domain = getMailDomain(c.env);
@@ -311,7 +515,12 @@ app.post('/api/lease', async (c) => {
       address,
       expiresInHours: 24,
       ipAddress: ip,
+      userId: auth.type === 'user' ? auth.userId : null,
     });
+
+    if (auth.type === 'user' && auth.userId) {
+      await incrementLeaseUsage(c.env.DB, auth.userId);
+    }
 
     return c.json({
       success: true,
@@ -331,7 +540,7 @@ app.post('/api/lease', async (c) => {
 
 // 长轮询等待邮件并返回 extracted_code
 app.get('/api/mail', async (c) => {
-  const authErr = await requireApiToken(c);
+  const authErr = await requireApiAuth(c, 'mail');
   if (authErr) return authErr;
 
   try {
@@ -391,8 +600,9 @@ app.get('/api/mail', async (c) => {
 
 // 发送邮件
 app.post('/api/send', async (c) => {
-  const authErr = await requireApiToken(c);
+  const authErr = await requireApiAuth(c, 'send');
   if (authErr) return authErr;
+  const auth = c.get('auth')!;
 
   try {
     const body = await c.req.json();
@@ -401,6 +611,13 @@ app.post('/api/send', async (c) => {
     }
     if (!body.text && !body.html) {
       return c.json({ success: false, error: '缺少 text 或 html 内容' }, 400);
+    }
+
+    if (auth.type === 'user' && auth.userId != null && auth.dailySendQuota != null) {
+      const quotaCheck = await checkSendQuota(c.env.DB, auth.userId, auth.dailySendQuota);
+      if (!quotaCheck.ok) {
+        return c.json({ success: false, error: quotaCheck.error }, 429);
+      }
     }
 
     const domain = getMailDomain(c.env);
@@ -423,10 +640,16 @@ app.post('/api/send', async (c) => {
       text: body.text,
       html: body.html,
       from: fromEmail,
+      userId: auth.userId ?? null,
+      tokenId: auth.tokenId ?? null,
     });
 
     if (!result.success) {
       return c.json({ success: false, error: result.error }, 502);
+    }
+
+    if (auth.type === 'user' && auth.userId) {
+      await incrementSendUsage(c.env.DB, auth.userId);
     }
 
     return c.json({ success: true, sentEmailId: result.sentEmailId });
@@ -546,6 +769,59 @@ app.get('/admin/api/sent-emails', async (c) => {
   if (authErr) return authErr;
   const emails = await listSentEmails(c.env.DB);
   return c.json({ success: true, emails });
+});
+
+app.get('/admin/api/users', async (c) => {
+  const authErr = await requireAdmin(c);
+  if (authErr) return authErr;
+  const users = await listUsers(c.env.DB);
+  return c.json({ success: true, users });
+});
+
+app.post('/admin/api/users', async (c) => {
+  const authErr = await requireAdmin(c);
+  if (authErr) return authErr;
+  const body = await c.req.json();
+  if (!body.username || !body.password) {
+    return c.json({ success: false, error: '缺少 username 或 password' }, 400);
+  }
+  try {
+    const user = await createUser(c.env.DB, {
+      username: String(body.username),
+      password: String(body.password),
+      role: body.role === 'admin' ? 'admin' : 'user',
+      dailySendQuota: parseInt(body.dailySendQuota) || 50,
+    });
+    return c.json({ success: true, user });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes('UNIQUE')) {
+      return c.json({ success: false, error: '用户名已存在' }, 400);
+    }
+    return c.json({ success: false, error: '创建用户失败' }, 500);
+  }
+});
+
+app.put('/admin/api/users/:id', async (c) => {
+  const authErr = await requireAdmin(c);
+  if (authErr) return authErr;
+  const body = await c.req.json();
+  const user = await updateUser(c.env.DB, parseInt(c.req.param('id'), 10), {
+    role: body.role,
+    dailySendQuota: body.dailySendQuota !== undefined ? parseInt(body.dailySendQuota) : undefined,
+    enabled: body.enabled,
+    password: body.password || undefined,
+  });
+  if (!user) return c.json({ success: false, error: '用户不存在' }, 404);
+  return c.json({ success: true, user });
+});
+
+app.delete('/admin/api/users/:id', async (c) => {
+  const authErr = await requireAdmin(c);
+  if (authErr) return authErr;
+  const ok = await deleteUser(c.env.DB, parseInt(c.req.param('id'), 10));
+  if (!ok) return c.json({ success: false, error: '用户不存在' }, 404);
+  return c.json({ success: true });
 });
 
 export default app;

@@ -11,7 +11,7 @@ export default {
     
     try {
       // 自动初始化数据库（如果需要）
-      await initializeDatabase(env.DB);
+      await initializeDatabase(env.DB, env.ADMIN_PASSWORD);
       
       // 手动初始化数据库（如果请求中包含init参数）
       if (url.searchParams.has('init')) {

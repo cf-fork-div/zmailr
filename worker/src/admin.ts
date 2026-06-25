@@ -74,6 +74,7 @@ td code{font-size:.75rem;background:#0f172a;padding:2px 6px;border-radius:4px;wo
   <div class="tabs">
     <div class="tab active" data-tab="dashboard" onclick="switchTab('dashboard')">仪表盘</div>
     <div class="tab" data-tab="tokens" onclick="switchTab('tokens')">API Token</div>
+    <div class="tab" data-tab="users" onclick="switchTab('users')">用户</div>
     <div class="tab" data-tab="rules" onclick="switchTab('rules')">提取规则</div>
     <div class="tab" data-tab="sent" onclick="switchTab('sent')">发信日志</div>
   </div>
@@ -85,6 +86,12 @@ td code{font-size:.75rem;background:#0f172a;padding:2px 6px;border-radius:4px;wo
       <button class="btn" onclick="showTokenModal()">生成 Token</button>
     </div>
     <table><thead><tr><th>ID</th><th>名称</th><th>Token</th><th>过期时间</th><th>操作</th></tr></thead><tbody id="tokensBody"></tbody></table>
+  </div>
+  <div id="panel-users" class="panel">
+    <div class="toolbar">
+      <button class="btn" onclick="showUserModal()">新增用户</button>
+    </div>
+    <table><thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>日配额</th><th>状态</th><th>操作</th></tr></thead><tbody id="usersBody"></tbody></table>
   </div>
   <div id="panel-rules" class="panel">
     <h3 class="section-title">系统内置规则</h3>
@@ -111,6 +118,21 @@ td code{font-size:.75rem;background:#0f172a;padding:2px 6px;border-radius:4px;wo
     </div>
   </div>
 </div>
+<div id="userModal" class="modal">
+  <div class="modal-box">
+    <h3 id="userModalTitle">新增用户</h3>
+    <input type="hidden" id="userId">
+    <div class="form-group"><label>用户名</label><input id="userUsername" placeholder="用户名"></div>
+    <div class="form-group"><label>密码</label><input id="userPassword" type="password" placeholder="留空则不修改（编辑时）"></div>
+    <div class="form-group"><label>角色</label><select id="userRole"><option value="user">user</option><option value="admin">admin</option></select></div>
+    <div class="form-group"><label>日发信配额（-1 无限）</label><input id="userQuota" type="number" value="50"></div>
+    <div class="form-group" id="userEnabledGroup" style="display:none"><label>启用</label><select id="userEnabled"><option value="1">启用</option><option value="0">禁用</option></select></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="hideModal('userModal')">取消</button>
+      <button class="btn" onclick="saveUser()">保存</button>
+    </div>
+  </div>
+</div>
 <div id="ruleModal" class="modal">
   <div class="modal-box">
     <h3 id="ruleModalTitle">新增提取规则</h3>
@@ -132,7 +154,7 @@ function showLogin(){document.getElementById('loginView').style.display='flex';d
 function showApp(){document.getElementById('loginView').style.display='none';document.getElementById('appView').style.display='block'}
 async function doLogin(){const pw=document.getElementById('passwordInput').value;const err=document.getElementById('loginError');err.style.display='none';try{const r=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({password:pw})});const d=await r.json();if(!d.success){err.textContent=d.error||'登录失败';err.style.display='block';return}showApp();loadAll()}catch(e){err.textContent='网络错误';err.style.display='block'}}
 async function doLogout(){await fetch('/admin/logout',{method:'POST',credentials:'include'});showLogin()}
-function switchTab(name){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+name));if(name==='tokens')loadTokens();if(name==='rules')loadRules();if(name==='sent')loadSent()}
+function switchTab(name){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+name));if(name==='tokens')loadTokens();if(name==='users')loadUsers();if(name==='rules')loadRules();if(name==='sent')loadSent()}
 function hideModal(id){document.getElementById(id).classList.remove('show')}
 function showModal(id){document.getElementById(id).classList.add('show')}
 function fmtTime(ts){if(!ts)return'-';const d=new Date(ts>1e12?ts:ts*1000);return d.toLocaleString('zh-CN')}
@@ -144,6 +166,11 @@ async function loadTokens(){const d=await api('/tokens');const b=document.getEle
 function showTokenModal(){document.getElementById('tokenName').value='';document.getElementById('tokenDays').value='30';showModal('tokenModal')}
 async function createToken(){const name=document.getElementById('tokenName').value;const days=parseInt(document.getElementById('tokenDays').value)||30;await api('/tokens',{method:'POST',body:JSON.stringify({name,expiresInDays:days})});hideModal('tokenModal');loadTokens();loadStats()}
 async function deleteToken(id){if(!confirm('确定删除此 Token？'))return;await api('/tokens/'+id,{method:'DELETE'});loadTokens();loadStats()}
+async function loadUsers(){const d=await api('/users');const b=document.getElementById('usersBody');if(!d.users.length){b.innerHTML='<tr><td colspan="6" class="empty">暂无用户</td></tr>';return}b.innerHTML=d.users.map(u=>'<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+u.role+'</td><td>'+(u.dailySendQuota<0?'无限':u.dailySendQuota)+'</td><td><span class="badge '+(u.enabled?'badge-ok':'badge-off')+'">'+(u.enabled?'启用':'禁用')+'</span></td><td><button class="btn btn-sm" onclick="editUser('+u.id+')">编辑</button> <button class="btn btn-danger btn-sm" onclick="deleteUser('+u.id+')">删除</button></td></tr>').join('');window._users=d.users}
+function showUserModal(){document.getElementById('userModalTitle').textContent='新增用户';document.getElementById('userId').value='';document.getElementById('userUsername').value='';document.getElementById('userPassword').value='';document.getElementById('userRole').value='user';document.getElementById('userQuota').value='50';document.getElementById('userEnabledGroup').style.display='none';showModal('userModal')}
+function editUser(id){const u=(window._users||[]).find(x=>x.id===id);if(!u)return;document.getElementById('userModalTitle').textContent='编辑用户';document.getElementById('userId').value=u.id;document.getElementById('userUsername').value=u.username;document.getElementById('userUsername').disabled=true;document.getElementById('userPassword').value='';document.getElementById('userRole').value=u.role;document.getElementById('userQuota').value=u.dailySendQuota;document.getElementById('userEnabled').value=u.enabled?'1':'0';document.getElementById('userEnabledGroup').style.display='block';showModal('userModal')}
+async function saveUser(){const id=document.getElementById('userId').value;const body={username:document.getElementById('userUsername').value,password:document.getElementById('userPassword').value,role:document.getElementById('userRole').value,dailySendQuota:parseInt(document.getElementById('userQuota').value)||50};if(id){body.enabled=document.getElementById('userEnabled').value==='1';if(!body.password)delete body.password;await api('/users/'+id,{method:'PUT',body:JSON.stringify(body)})}else{if(!body.username||!body.password){alert('用户名和密码必填');return}await api('/users',{method:'POST',body:JSON.stringify(body)})}document.getElementById('userUsername').disabled=false;hideModal('userModal');loadUsers()}
+async function deleteUser(id){if(!confirm('确定删除此用户？'))return;await api('/users/'+id,{method:'DELETE'});loadUsers()}
 async function loadRules(){const d=await api('/rules');document.getElementById('builtinRulesBody').innerHTML=(d.builtinRules||[]).map(r=>'<tr><td>'+r.domain+'</td><td>'+r.description+'</td><td><code>'+r.regex+'</code></td><td>'+r.priority+'</td><td><span class="badge badge-builtin">内置</span></td></tr>').join('');const b=document.getElementById('rulesBody');if(!d.rules.length){b.innerHTML='<tr><td colspan="6" class="empty">暂无自定义规则</td></tr>';return}b.innerHTML=d.rules.map(r=>'<tr><td>'+r.id+'</td><td>'+r.domain+'</td><td><code>'+r.regex+'</code></td><td>'+r.priority+'</td><td><span class="badge '+(r.enabled?'badge-ok':'badge-off')+'">'+(r.enabled?'启用':'禁用')+'</span></td><td><button class="btn btn-sm" onclick="editRule('+r.id+')">编辑</button> <button class="btn btn-danger btn-sm" onclick="deleteRule('+r.id+')">删除</button></td></tr>').join('');window._rules=d.rules}
 function showRuleModal(){document.getElementById('ruleModalTitle').textContent='新增提取规则';document.getElementById('ruleId').value='';document.getElementById('ruleDomain').value='*';document.getElementById('ruleRegex').value='';document.getElementById('rulePriority').value='0';document.getElementById('ruleEnabled').value='1';showModal('ruleModal')}
 function editRule(id){const r=(window._rules||[]).find(x=>x.id===id);if(!r)return;document.getElementById('ruleModalTitle').textContent='编辑提取规则';document.getElementById('ruleId').value=r.id;document.getElementById('ruleDomain').value=r.domain;document.getElementById('ruleRegex').value=r.regex;document.getElementById('rulePriority').value=r.priority;document.getElementById('ruleEnabled').value=r.enabled?'1':'0';showModal('ruleModal')}

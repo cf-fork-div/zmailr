@@ -10,6 +10,8 @@ export interface SendMailPayload {
   html?: string;
   /** Pre-validated full sender address; defaults to no-reply@domain */
   from?: string;
+  userId?: number | null;
+  tokenId?: number | null;
 }
 
 export interface SendMailResult {
@@ -108,7 +110,7 @@ export async function sendMail(
   if (!brevoKey && !mailchannelsKey) {
     const error = 'BREVO_API_KEY or MAILCHANNELS_API_KEY must be configured';
     console.error(error);
-    await saveSentEmail(db, data.to, data.subject, 'failed');
+    await saveSentEmail(db, data.to, data.subject, 'failed', data.userId, data.tokenId);
     return { success: false, error };
   }
 
@@ -119,15 +121,15 @@ export async function sendMail(
 
     if (!result.ok) {
       console.error('发信失败:', result.error);
-      await saveSentEmail(db, data.to, data.subject, 'failed');
+      await saveSentEmail(db, data.to, data.subject, 'failed', data.userId, data.tokenId);
       return { success: false, error: result.error };
     }
 
-    const record = await saveSentEmail(db, data.to, data.subject, 'sent');
+    const record = await saveSentEmail(db, data.to, data.subject, 'sent', data.userId, data.tokenId);
     return { success: true, sentEmailId: record.id };
   } catch (error) {
     console.error('发送邮件异常:', error);
-    await saveSentEmail(db, data.to, data.subject, 'failed');
+    await saveSentEmail(db, data.to, data.subject, 'failed', data.userId, data.tokenId);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),

@@ -11,6 +11,68 @@ export interface Env {
   MAILCHANNELS_API_KEY?: string;
 }
 
+export type UserRole = 'admin' | 'user';
+export type TokenScope = 'lease' | 'mail' | 'send';
+
+export interface User {
+  id: number;
+  username: string;
+  role: UserRole;
+  dailySendQuota: number;
+  enabled: boolean;
+  createdAt: number;
+  lastLoginAt: number | null;
+}
+
+export interface UserToken {
+  id: number;
+  userId: number;
+  name: string | null;
+  scopes: TokenScope[];
+  expiresAt: number;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
+export interface UserTokenCreated extends UserToken {
+  token: string;
+}
+
+export interface DailyUsage {
+  userId: number;
+  usageDate: string;
+  sendCount: number;
+  leaseCount: number;
+}
+
+export interface ApiAuthContext {
+  type: 'legacy' | 'user';
+  userId?: number;
+  tokenId?: number;
+  scopes: TokenScope[];
+  dailySendQuota?: number;
+}
+
+export interface CreateUserParams {
+  username: string;
+  password: string;
+  role?: UserRole;
+  dailySendQuota?: number;
+}
+
+export interface UpdateUserParams {
+  role?: UserRole;
+  dailySendQuota?: number;
+  enabled?: boolean;
+  password?: string;
+}
+
+export interface CreateUserTokenParams {
+  name?: string;
+  expiresInDays: number;
+  scopes: TokenScope[];
+}
+
 // 邮箱类型
 export interface Mailbox {
   id: string;
@@ -26,6 +88,7 @@ export interface CreateMailboxParams {
   address: string;
   expiresInHours: number;
   ipAddress: string;
+  userId?: number | null;
 }
 
 // 邮件类型
@@ -95,6 +158,8 @@ export interface SentEmail {
   subject: string;
   status: string;
   createdAt: number;
+  userId?: number | null;
+  tokenId?: number | null;
 }
 
 // 管理后台统计

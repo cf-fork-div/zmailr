@@ -14,6 +14,14 @@ import {
   SaveExtractRuleParams,
   SentEmail,
   AdminStats,
+  User,
+  UserToken,
+  UserTokenCreated,
+  DailyUsage,
+  CreateUserParams,
+  UpdateUserParams,
+  CreateUserTokenParams,
+  TokenScope,
 } from './types';
 import { 
   generateId, 
@@ -21,6 +29,7 @@ import {
   calculateExpiryTimestamp,
   generateApiToken,
 } from './utils';
+import { hashPassword, hashToken } from './crypto';
 
 // 附件分块大小（字节）
 const CHUNK_SIZE = 500000; // 约500KB
@@ -28,8 +37,9 @@ const CHUNK_SIZE = 500000; // 约500KB
 /**
  * 初始化数据库
  * @param db 数据库实例
+ * @param adminPassword 首次迁移时用于创建 admin 用户
  */
-export async function initializeDatabase(db: D1Database): Promise<void> {
+export async function initializeDatabase(db: D1Database, adminPassword?: string): Promise<void> {
   try {
     // 创建邮箱表
     await db.exec(`CREATE TABLE IF NOT EXISTS mailboxes (id TEXT PRIMARY KEY, address TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, ip_address TEXT, last_accessed INTEGER NOT NULL);`);
@@ -72,6 +82,18 @@ export async function initializeDatabase(db: D1Database): Promise<void> {
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_extract_rules_domain ON extract_rules(domain);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_emails_extracted_code ON emails(extracted_code);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_emails_created_at ON sent_emails(created_at);`);
+
+    // zMailR Phase 1: users & auth
+    await db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', daily_send_quota INTEGER NOT NULL DEFAULT 50, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER DEFAULT (unixepoch()), last_login_at INTEGER);`);
+    await db.exec(`CREATE TABLE IF NOT EXISTS user_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, token_hash TEXT UNIQUE NOT NULL, name TEXT, scopes TEXT NOT NULL DEFAULT '["lease","mail","send"]', expires_at INTEGER NOT NULL, created_at INTEGER DEFAULT (unixepoch()), last_used_at INTEGER, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);`);
+    await db.exec(`CREATE TABLE IF NOT EXISTS daily_usage (user_id INTEGER NOT NULL, usage_date TEXT NOT NULL, send_count INTEGER NOT NULL DEFAULT 0, lease_count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, usage_date), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);`);
+    await migrateAddColumn(db, 'sent_emails', 'user_id', 'INTEGER');
+    await migrateAddColumn(db, 'sent_emails', 'token_id', 'INTEGER');
+    await migrateAddColumn(db, 'mailboxes', 'user_id', 'INTEGER');
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_user_tokens_hash ON user_tokens(token_hash);`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_mailboxes_user_id ON mailboxes(user_id);`);
+
+    await seedAdminUser(db, adminPassword);
     
     console.log('数据库初始化成功');
   } catch (error) {
@@ -92,6 +114,42 @@ async function migrateAddColumn(db: D1Database, table: string, column: string, d
   }
 }
 
+async function seedAdminUser(db: D1Database, adminPassword?: string): Promise<void> {
+  if (!adminPassword) return;
+  const count = await db.prepare(`SELECT COUNT(*) as c FROM users`).first<{ c: number }>();
+  if ((count?.c ?? 0) > 0) return;
+  const passwordHash = await hashPassword(adminPassword);
+  await db.prepare(
+    `INSERT INTO users (username, password_hash, role, daily_send_quota, enabled) VALUES (?, ?, 'admin', -1, 1)`
+  ).bind('admin', passwordHash).run();
+  console.log('已创建初始 admin 用户');
+}
+
+export function getTodayUsageDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function mapUser(row: Record<string, unknown>): User {
+  return {
+    id: row.id as number,
+    username: row.username as string,
+    role: row.role as User['role'],
+    dailySendQuota: row.daily_send_quota as number,
+    enabled: !!row.enabled,
+    createdAt: row.created_at as number,
+    lastLoginAt: (row.last_login_at as number | null) ?? null,
+  };
+}
+
+function parseScopes(raw: string): TokenScope[] {
+  try {
+    const parsed = JSON.parse(raw) as string[];
+    return parsed.filter((s): s is TokenScope => s === 'lease' || s === 'mail' || s === 'send');
+  } catch {
+    return ['lease', 'mail', 'send'];
+  }
+}
+
 /**
  * 创建邮箱
  * @param db 数据库实例
@@ -109,7 +167,7 @@ export async function createMailbox(db: D1Database, params: CreateMailboxParams)
     lastAccessed: now,
   };
   
-  await db.prepare(`INSERT INTO mailboxes (id, address, created_at, expires_at, ip_address, last_accessed) VALUES (?, ?, ?, ?, ?, ?)`).bind(mailbox.id, mailbox.address, mailbox.createdAt, mailbox.expiresAt, mailbox.ipAddress, mailbox.lastAccessed).run();
+  await db.prepare(`INSERT INTO mailboxes (id, address, created_at, expires_at, ip_address, last_accessed, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(mailbox.id, mailbox.address, mailbox.createdAt, mailbox.expiresAt, mailbox.ipAddress, mailbox.lastAccessed, params.userId ?? null).run();
   
   return mailbox;
 }
@@ -652,18 +710,22 @@ export async function saveSentEmail(
   db: D1Database,
   toEmail: string,
   subject: string,
-  status: string = 'sent'
+  status: string = 'sent',
+  userId?: number | null,
+  tokenId?: number | null
 ): Promise<SentEmail> {
   const result = await db.prepare(
-    `INSERT INTO sent_emails (to_email, subject, status) VALUES (?, ?, ?)
-     RETURNING id, to_email, subject, status, created_at`
-  ).bind(toEmail, subject, status).first();
+    `INSERT INTO sent_emails (to_email, subject, status, user_id, token_id) VALUES (?, ?, ?, ?, ?)
+     RETURNING id, to_email, subject, status, created_at, user_id, token_id`
+  ).bind(toEmail, subject, status, userId ?? null, tokenId ?? null).first();
   return {
     id: result!.id as number,
     toEmail: result!.to_email as string,
     subject: result!.subject as string,
     status: result!.status as string,
     createdAt: result!.created_at as number,
+    userId: (result!.user_id as number | null) ?? null,
+    tokenId: (result!.token_id as number | null) ?? null,
   };
 }
 
@@ -820,4 +882,200 @@ export async function findLatestEmail(
   if (!result) return null;
 
   return mapPolledEmail(result as Record<string, unknown>);
+}
+
+// ─── Users & Auth ────────────────────────────────────────────
+
+export async function getUserById(db: D1Database, id: number): Promise<User | null> {
+  const result = await db.prepare(
+    `SELECT id, username, role, daily_send_quota, enabled, created_at, last_login_at FROM users WHERE id = ?`
+  ).bind(id).first();
+  return result ? mapUser(result as Record<string, unknown>) : null;
+}
+
+export async function getUserByUsername(db: D1Database, username: string): Promise<User | null> {
+  const result = await db.prepare(
+    `SELECT id, username, role, daily_send_quota, enabled, created_at, last_login_at FROM users WHERE username = ?`
+  ).bind(username).first();
+  return result ? mapUser(result as Record<string, unknown>) : null;
+}
+
+export async function listUsers(db: D1Database): Promise<User[]> {
+  const results = await db.prepare(
+    `SELECT id, username, role, daily_send_quota, enabled, created_at, last_login_at FROM users ORDER BY created_at ASC`
+  ).all();
+  if (!results.results) return [];
+  return results.results.map((row) => mapUser(row as Record<string, unknown>));
+}
+
+export async function createUser(db: D1Database, params: CreateUserParams): Promise<User> {
+  const passwordHash = await hashPassword(params.password);
+  const result = await db.prepare(
+    `INSERT INTO users (username, password_hash, role, daily_send_quota, enabled)
+     VALUES (?, ?, ?, ?, 1)
+     RETURNING id, username, role, daily_send_quota, enabled, created_at, last_login_at`
+  ).bind(
+    params.username,
+    passwordHash,
+    params.role ?? 'user',
+    params.dailySendQuota ?? 50
+  ).first();
+  return mapUser(result as Record<string, unknown>);
+}
+
+export async function updateUser(db: D1Database, id: number, params: UpdateUserParams): Promise<User | null> {
+  const existing = await getUserById(db, id);
+  if (!existing) return null;
+
+  if (params.password) {
+    const passwordHash = await hashPassword(params.password);
+    await db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).bind(passwordHash, id).run();
+  }
+
+  await db.prepare(
+    `UPDATE users SET role = COALESCE(?, role), daily_send_quota = COALESCE(?, daily_send_quota), enabled = COALESCE(?, enabled) WHERE id = ?`
+  ).bind(
+    params.role ?? null,
+    params.dailySendQuota ?? null,
+    params.enabled === undefined ? null : (params.enabled ? 1 : 0),
+    id
+  ).run();
+
+  return getUserById(db, id);
+}
+
+export async function deleteUser(db: D1Database, id: number): Promise<boolean> {
+  const result = await db.prepare(`DELETE FROM users WHERE id = ?`).bind(id).run();
+  return (result.meta?.changes ?? 0) > 0;
+}
+
+export async function updateUserLastLogin(db: D1Database, id: number): Promise<void> {
+  await db.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`).bind(getCurrentTimestamp(), id).run();
+}
+
+export async function verifyUserToken(
+  db: D1Database,
+  token: string
+): Promise<{ userId: number; tokenId: number; scopes: TokenScope[] } | null> {
+  const tokenHash = await hashToken(token);
+  const nowMs = Date.now();
+  const result = await db.prepare(
+    `SELECT id, user_id, scopes FROM user_tokens WHERE token_hash = ? AND expires_at > ?`
+  ).bind(tokenHash, nowMs).first();
+
+  if (!result) return null;
+
+  await db.prepare(`UPDATE user_tokens SET last_used_at = ? WHERE id = ?`).bind(getCurrentTimestamp(), result.id).run();
+
+  return {
+    userId: result.user_id as number,
+    tokenId: result.id as number,
+    scopes: parseScopes(result.scopes as string),
+  };
+}
+
+export async function listUserTokens(db: D1Database, userId: number): Promise<UserToken[]> {
+  const results = await db.prepare(
+    `SELECT id, user_id, name, scopes, expires_at, created_at, last_used_at FROM user_tokens WHERE user_id = ? ORDER BY created_at DESC`
+  ).bind(userId).all();
+  if (!results.results) return [];
+  return results.results.map((row) => ({
+    id: row.id as number,
+    userId: row.user_id as number,
+    name: row.name as string | null,
+    scopes: parseScopes(row.scopes as string),
+    expiresAt: row.expires_at as number,
+    createdAt: row.created_at as number,
+    lastUsedAt: (row.last_used_at as number | null) ?? null,
+  }));
+}
+
+export async function createUserToken(
+  db: D1Database,
+  userId: number,
+  params: CreateUserTokenParams
+): Promise<UserTokenCreated> {
+  const token = generateApiToken();
+  const tokenHash = await hashToken(token);
+  const expiresAt = Date.now() + params.expiresInDays * 24 * 60 * 60 * 1000;
+  const scopesJson = JSON.stringify(params.scopes);
+
+  const result = await db.prepare(
+    `INSERT INTO user_tokens (user_id, token_hash, name, scopes, expires_at)
+     VALUES (?, ?, ?, ?, ?)
+     RETURNING id, user_id, name, scopes, expires_at, created_at, last_used_at`
+  ).bind(userId, tokenHash, params.name ?? null, scopesJson, expiresAt).first();
+
+  return {
+    id: result!.id as number,
+    userId: result!.user_id as number,
+    name: result!.name as string | null,
+    scopes: parseScopes(result!.scopes as string),
+    expiresAt: result!.expires_at as number,
+    createdAt: result!.created_at as number,
+    lastUsedAt: (result!.last_used_at as number | null) ?? null,
+    token,
+  };
+}
+
+export async function deleteUserToken(db: D1Database, userId: number, tokenId: number): Promise<boolean> {
+  const result = await db.prepare(
+    `DELETE FROM user_tokens WHERE id = ? AND user_id = ?`
+  ).bind(tokenId, userId).run();
+  return (result.meta?.changes ?? 0) > 0;
+}
+
+export async function getDailyUsage(db: D1Database, userId: number, usageDate?: string): Promise<DailyUsage> {
+  const date = usageDate ?? getTodayUsageDate();
+  const result = await db.prepare(
+    `SELECT user_id, usage_date, send_count, lease_count FROM daily_usage WHERE user_id = ? AND usage_date = ?`
+  ).bind(userId, date).first();
+
+  if (result) {
+    return {
+      userId: result.user_id as number,
+      usageDate: result.usage_date as string,
+      sendCount: result.send_count as number,
+      leaseCount: result.lease_count as number,
+    };
+  }
+
+  return { userId, usageDate: date, sendCount: 0, leaseCount: 0 };
+}
+
+export async function checkSendQuota(db: D1Database, userId: number, quota: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (quota < 0) return { ok: true };
+  const usage = await getDailyUsage(db, userId);
+  if (usage.sendCount >= quota) {
+    return { ok: false, error: `已达到每日发信配额 (${quota})` };
+  }
+  return { ok: true };
+}
+
+export async function incrementSendUsage(db: D1Database, userId: number): Promise<void> {
+  const date = getTodayUsageDate();
+  await db.prepare(
+    `INSERT INTO daily_usage (user_id, usage_date, send_count, lease_count) VALUES (?, ?, 1, 0)
+     ON CONFLICT(user_id, usage_date) DO UPDATE SET send_count = send_count + 1`
+  ).bind(userId, date).run();
+}
+
+export async function incrementLeaseUsage(db: D1Database, userId: number): Promise<void> {
+  const date = getTodayUsageDate();
+  await db.prepare(
+    `INSERT INTO daily_usage (user_id, usage_date, send_count, lease_count) VALUES (?, ?, 0, 1)
+     ON CONFLICT(user_id, usage_date) DO UPDATE SET lease_count = lease_count + 1`
+  ).bind(userId, date).run();
+}
+
+export async function isMailboxOwnedByUser(
+  db: D1Database,
+  localPart: string,
+  userId: number
+): Promise<boolean> {
+  const now = getCurrentTimestamp();
+  const result = await db.prepare(
+    `SELECT id FROM mailboxes WHERE address = ? AND user_id = ? AND expires_at > ?`
+  ).bind(localPart, userId, now).first();
+  return !!result;
 }
