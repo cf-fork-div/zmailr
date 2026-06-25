@@ -371,7 +371,7 @@
     },
     "send": {
       "title": "POST /api/send — Send email",
-      "description": "Send email via MailChannels from no-reply@your-domain (requires DNS setup)."
+      "description": "Send email via Brevo from no-reply@your-domain (DNS and sender setup required; see docs/brevo-setup.md)."
     },
     "python": {
       "title": "Python example (requests)",
@@ -385,7 +385,7 @@
       "badRequest": "Missing or invalid parameters.",
       "notFound": "Mailbox not found or expired.",
       "timeout": "No matching email within the timeout window.",
-      "sendFailed": "MailChannels send failed."
+      "sendFailed": "Outbound send failed (Brevo / MailChannels)."
     },
     "param": "Parameter",
     "description": "Description",

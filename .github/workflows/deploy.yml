@@ -99,6 +99,8 @@ jobs:
           # 明确指定要执行的命令是 'deploy'
           command: deploy
           secrets: |
+            BREVO_API_KEY
             MAILCHANNELS_API_KEY
         env:
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
           MAILCHANNELS_API_KEY: ${{ secrets.MAILCHANNELS_API_KEY }}

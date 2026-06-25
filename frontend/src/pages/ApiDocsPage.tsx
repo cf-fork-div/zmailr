@@ -70,7 +70,7 @@ mail = requests.get(
 ).json()
 print(f"Code: {mail.get('code')}")
 
-# 3. Optional: send email via MailChannels
+# 3. Optional: send email via Brevo (/api/send)
 send = requests.post(
     f"{BASE}/api/send",
     headers=headers,

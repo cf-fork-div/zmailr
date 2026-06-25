@@ -137,7 +137,8 @@ We provide two deployment methods, you can choose according to your needs:
         <li><code>D1_DATABASE_NAME</code>: The name of the D1 database you created in step 2.</li>
         <li><code>VITE_EMAIL_DOMAIN</code>: Your list of domains, separated by commas (e.g., example.com,test.com).</li>
         <li><code>ADMIN_PASSWORD</code>: Admin panel (<code>/admin</code>) login password for API token and extract-rule management.</li>
-        <li><code>MAILCHANNELS_API_KEY</code>: MailChannels Email API key (scope: <code>api</code>) for <code>/api/send</code>.</li>
+        <li><code>BREVO_API_KEY</code>: <a href="docs/brevo-setup.md">Brevo</a> Transactional Email API key for <code>/api/send</code> (recommended).</li>
+        <li><code>MAILCHANNELS_API_KEY</code> (optional): MailChannels API key; used only when Brevo is not configured.</li>
       </ul>
     </li>
     <li>After completing the steps above, the project will be automatically deployed on every push to the <code>main</code> branch. You can also trigger the deployment manually from the Actions page.</li>
@@ -293,7 +294,7 @@ Example response:
 
 ### POST /api/send — Send email
 
-Sends mail via MailChannels from `no-reply@your-domain` (requires DNS setup below).
+Sends mail via Brevo from `no-reply@your-domain` (see [Brevo setup guide](docs/brevo-setup.md)).
 
 ```bash
 curl -X POST "https://your-domain/api/send" \
@@ -354,9 +355,26 @@ Without it, admin login and UI token creation are disabled.
 
 ---
 
-## 📤 MailChannels outbound mail
+## 📤 Outbound mail (Brevo)
 
-`/api/send` uses the [MailChannels Email API](https://www.mailchannels.com/). Since 2024, sending requires an **API key** and **Domain Lockdown DNS** (`auth=`); the legacy `cfid=`-only setup no longer works.
+`/api/send` uses the [Brevo](https://www.brevo.com/) Transactional Email API by default. Full walkthrough: **[docs/brevo-setup.md](docs/brevo-setup.md)** (signup, SPF/DKIM/DMARC, sender, API key, disable IP restriction, GitHub Secret, testing).
+
+Quick checklist:
+
+1. Sign up for Brevo free plan (~300 emails/day)
+2. Add and verify your sending domain (Cloudflare DNS)
+3. Add sender `no-reply@your-domain` (display name `zMailR`)
+4. Create an API key and disable **Authorized IPs** blocking (required for Workers)
+5. Add `BREVO_API_KEY` to GitHub Secrets and redeploy
+
+> From address is fixed at `no-reply@your-domain`. Without Brevo, you can fall back to MailChannels via `MAILCHANNELS_API_KEY`.
+
+---
+
+<details>
+<summary>📤 MailChannels outbound mail (legacy / fallback)</summary>
+
+If `BREVO_API_KEY` is not set, `/api/send` can fall back to the [MailChannels Email API](https://www.mailchannels.com/). Since 2024, sending requires an **API key** and **Domain Lockdown DNS** (`auth=`); the legacy `cfid=`-only setup no longer works.
 
 ### 1. MailChannels account and API key
 
@@ -377,7 +395,7 @@ Without it, admin login and UI token creation are disabled.
 2. Ensure **Email Routing** is enabled on the same domain
 3. Test via `/admin` sent logs or `POST /api/send`
 
-> Outbound From address is fixed at `no-reply@your-domain`.
+</details>
 
 ---
 

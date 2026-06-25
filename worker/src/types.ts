@@ -7,6 +7,7 @@ export interface Env {
   VITE_EMAIL_DOMAIN?: string;
   MAIL_DOMAIN?: string;
   ADMIN_PASSWORD?: string;
+  BREVO_API_KEY?: string;
   MAILCHANNELS_API_KEY?: string;
 }
 

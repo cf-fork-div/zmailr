@@ -371,7 +371,7 @@
     },
     "send": {
       "title": "POST /api/send — 发送邮件",
-      "description": "通过 MailChannels 从 no-reply@你的域名 发送邮件（需完成 DNS 配置）。"
+      "description": "通过 Brevo 从 no-reply@你的域名 发送邮件（需完成 DNS 与发信配置，见 docs/brevo-setup.md）。"
     },
     "python": {
       "title": "Python 示例（requests）",
@@ -385,7 +385,7 @@
       "badRequest": "缺少或无效的请求参数。",
       "notFound": "邮箱不存在或已过期。",
       "timeout": "在超时时间内未收到匹配的邮件。",
-      "sendFailed": "MailChannels 发信失败。"
+      "sendFailed": "发信失败（Brevo / MailChannels）。"
     },
     "param": "参数",
     "description": "说明",
