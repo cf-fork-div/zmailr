@@ -40,12 +40,17 @@ const Header: React.FC<HeaderProps> = ({
   return (
     <header className="border-b">
       <Container>
-        <div className="flex items-center justify-between py-3">
-          <Link to="/" className="text-xl font-bold tracking-tight">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-3">
+          <div aria-hidden="true" />
+
+          <Link
+            to="/"
+            className="text-base sm:text-xl font-bold tracking-tight text-center whitespace-nowrap"
+          >
             {t('app.title')}
           </Link>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center justify-end gap-1">
             <ThemeSwitcher />
             <LanguageSwitcher />
             <a
