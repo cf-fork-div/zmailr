@@ -4,14 +4,19 @@ import { Link } from 'react-router-dom';
 import Container from '../components/Container';
 import ApiDocCodeBlock from '../components/ApiDocCodeBlock';
 import {
+  curlDeleteMailbox,
   curlLatestCode,
+  curlLatestLink,
   curlLease,
   curlMail,
+  curlMailboxes,
+  curlRawEmail,
   curlSend,
   getApiBaseUrl,
   leaseResponse,
   mailResponse,
   pythonExample,
+  rateLimitHeaderExample,
   sendResponse,
 } from '../utils/apiDocExamples';
 
@@ -30,18 +35,36 @@ const ApiDocsPage: React.FC = () => {
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">{t('apiDocs.auth.title')}</h2>
           <p className="text-sm text-muted-foreground">{t('apiDocs.auth.description')}</p>
-          <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
-            <li>{t('apiDocs.auth.step1')}</li>
-            <li>
-              {t('apiDocs.auth.step2')}{' '}
+          <div>
+            <p className="text-sm font-medium">{t('apiDocs.auth.userTokenTitle')}</p>
+            <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1 mt-1">
+              <li>{t('apiDocs.auth.userTokenStep1')}</li>
+              <li>
+                {t('apiDocs.auth.userTokenStep2')}{' '}
+                <Link to="/dashboard/api-keys" className="text-primary hover:underline">
+                  /dashboard/api-keys
+                </Link>
+              </li>
+              <li>{t('apiDocs.auth.userTokenStep3')}</li>
+            </ol>
+          </div>
+          <p className="text-sm text-muted-foreground">{t('apiDocs.auth.oneTokenLimit')}</p>
+          <p className="text-sm text-muted-foreground">{t('apiDocs.auth.scopesNote')}</p>
+          <div>
+            <p className="text-sm font-medium">{t('apiDocs.auth.legacyTitle')}</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {t('apiDocs.auth.legacyDescription')}{' '}
               <a href={`${baseUrl}/admin`} className="text-primary hover:underline">
                 {baseUrl}/admin
               </a>
-            </li>
-            <li>{t('apiDocs.auth.step3')}</li>
-          </ol>
+            </p>
+          </div>
           <p className="text-sm text-muted-foreground">{t('apiDocs.auth.headerNote')}</p>
           <ApiDocCodeBlock>{`Authorization: Bearer <your-api-token>`}</ApiDocCodeBlock>
+          <div>
+            <p className="text-sm font-medium">{t('apiDocs.auth.sessionVsBearerTitle')}</p>
+            <p className="text-sm text-muted-foreground mt-1">{t('apiDocs.auth.sessionVsBearer')}</p>
+          </div>
         </section>
 
         <section className="space-y-4">
@@ -57,8 +80,7 @@ const ApiDocsPage: React.FC = () => {
           <h2 className="text-lg font-semibold">{t('apiDocs.listMailboxes.title')}</h2>
           <p className="text-sm text-muted-foreground">{t('apiDocs.listMailboxes.description')}</p>
           <p className="text-sm font-medium">GET /api/mailboxes</p>
-          <ApiDocCodeBlock>{`curl "${baseUrl}/api/mailboxes" \\
-  -H "Authorization: Bearer YOUR_TOKEN"`}</ApiDocCodeBlock>
+          <ApiDocCodeBlock>{curlMailboxes(baseUrl)}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">
@@ -72,17 +94,14 @@ const ApiDocsPage: React.FC = () => {
           <h2 className="text-lg font-semibold">{t('apiDocs.latestLink.title')}</h2>
           <p className="text-sm text-muted-foreground">{t('apiDocs.latestLink.description')}</p>
           <p className="text-sm font-medium">GET /api/mailboxes/:address/latest-link</p>
-          <ApiDocCodeBlock>{`curl "${baseUrl}/api/mailboxes/abc123/latest-link" \\
-  -H "Authorization: Bearer YOUR_TOKEN"`}</ApiDocCodeBlock>
+          <ApiDocCodeBlock>{curlLatestLink(baseUrl)}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">{t('apiDocs.rawEmail.title')}</h2>
           <p className="text-sm text-muted-foreground">{t('apiDocs.rawEmail.description')}</p>
           <p className="text-sm font-medium">GET /api/emails/:id/raw</p>
-          <ApiDocCodeBlock>{`curl "${baseUrl}/api/emails/EMAIL_ID/raw" \\
-  -H "Authorization: Bearer YOUR_TOKEN" \\
-  -o message.eml`}</ApiDocCodeBlock>
+          <ApiDocCodeBlock>{curlRawEmail(baseUrl)}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">
@@ -111,11 +130,14 @@ const ApiDocsPage: React.FC = () => {
               </ul>
             </div>
           </div>
+          <p className="text-sm font-medium">DELETE /api/mailboxes/:address</p>
+          <ApiDocCodeBlock>{curlDeleteMailbox(baseUrl)}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">{t('apiDocs.rateLimit.title')}</h2>
           <p className="text-sm text-muted-foreground">{t('apiDocs.rateLimit.description')}</p>
+          <ApiDocCodeBlock>{rateLimitHeaderExample}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">

@@ -1,122 +1,166 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import ApiDocCodeBlock from './ApiDocCodeBlock';
 import {
+  curlDeleteMailbox,
   curlLatestCode,
+  curlLatestLink,
   curlLease,
   curlMail,
   curlMailboxes,
   curlSend,
   getApiBaseUrl,
-  pythonExample,
 } from '../utils/apiDocExamples';
 
-const EndpointSection: React.FC<{
-  title: string;
-  description: string;
+type EndpointRow = {
   method: string;
-  example: string;
-}> = ({ title, description, method, example }) => (
-  <div className="space-y-2">
-    <h3 className="text-sm font-semibold">{title}</h3>
-    <p className="text-xs sm:text-sm text-muted-foreground">{description}</p>
-    <p className="text-xs sm:text-sm font-medium font-mono">{method}</p>
-    <ApiDocCodeBlock>{example}</ApiDocCodeBlock>
-  </div>
-);
+  path: string;
+  scopeKey: string;
+  descKey: string;
+};
+
+const ENDPOINTS: EndpointRow[] = [
+  { method: 'POST', path: '/api/lease', scopeKey: 'apiUsage.scopes.lease', descKey: 'apiDocs.lease.description' },
+  {
+    method: 'GET',
+    path: '/api/mailboxes',
+    scopeKey: 'apiUsage.scopes.mail',
+    descKey: 'apiDocs.listMailboxes.description',
+  },
+  {
+    method: 'GET',
+    path: '/api/mailboxes/:address/latest-code',
+    scopeKey: 'apiUsage.scopes.mail',
+    descKey: 'apiDocs.latestCode.description',
+  },
+  {
+    method: 'GET',
+    path: '/api/mailboxes/:address/latest-link',
+    scopeKey: 'apiUsage.scopes.mail',
+    descKey: 'apiDocs.latestLink.description',
+  },
+  { method: 'GET', path: '/api/mail', scopeKey: 'apiUsage.scopes.mail', descKey: 'apiDocs.mail.description' },
+  { method: 'POST', path: '/api/send', scopeKey: 'apiUsage.scopes.send', descKey: 'apiDocs.send.description' },
+  {
+    method: 'DELETE',
+    path: '/api/mailboxes/:address',
+    scopeKey: 'apiUsage.scopes.none',
+    descKey: 'apiUsage.deleteDesc',
+  },
+];
 
 const ApiUsageDocs: React.FC = () => {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(true);
   const baseUrl = useMemo(getApiBaseUrl, []);
 
   return (
-    <div className="border border-border rounded-lg bg-card overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
-        aria-expanded={expanded}
-      >
-        <div>
-          <h2 className="text-sm font-semibold">{t('apiUsage.title')}</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">{t('apiUsage.subtitle')}</p>
+    <div className="border border-border rounded-lg bg-card p-4 space-y-6">
+      <div>
+        <h2 className="text-sm font-semibold">{t('apiUsage.title')}</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">{t('apiUsage.subtitle')}</p>
+      </div>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">{t('apiUsage.baseUrlTitle')}</h3>
+        <ApiDocCodeBlock>{baseUrl}</ApiDocCodeBlock>
+        <p className="text-xs text-muted-foreground">{t('apiDocs.auth.headerNote')}</p>
+        <ApiDocCodeBlock>{`Authorization: Bearer YOUR_TOKEN`}</ApiDocCodeBlock>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">{t('apiUsage.tokenNoteTitle')}</h3>
+        <p className="text-xs sm:text-sm text-muted-foreground">{t('auth.tokenLimitOne')}</p>
+        <ul className="text-xs sm:text-sm text-muted-foreground space-y-1">
+          <li>
+            <span className="font-medium text-foreground">{t('tokens.scopeLease')}</span>
+            {' — '}
+            {t('tokens.scopeLeaseDesc')}
+          </li>
+          <li>
+            <span className="font-medium text-foreground">{t('tokens.scopeMail')}</span>
+            {' — '}
+            {t('tokens.scopeMailDesc')}
+          </li>
+          <li>
+            <span className="font-medium text-foreground">{t('tokens.scopeSend')}</span>
+            {' — '}
+            {t('tokens.scopeSendDesc')}
+          </li>
+        </ul>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">{t('apiUsage.endpointsTitle')}</h3>
+        <div className="overflow-x-auto -mx-1 px-1">
+          <table className="w-full text-xs sm:text-sm border-collapse min-w-[520px]">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left py-2 pr-3 font-medium">{t('apiUsage.colMethod')}</th>
+                <th className="text-left py-2 pr-3 font-medium">{t('apiUsage.colPath')}</th>
+                <th className="text-left py-2 pr-3 font-medium">{t('apiUsage.colScope')}</th>
+                <th className="text-left py-2 font-medium">{t('apiDocs.description')}</th>
+              </tr>
+            </thead>
+            <tbody className="text-muted-foreground">
+              {ENDPOINTS.map((row) => (
+                <tr key={`${row.method}-${row.path}`} className="border-b border-border/50 align-top">
+                  <td className="py-2 pr-3 font-mono text-foreground whitespace-nowrap">{row.method}</td>
+                  <td className="py-2 pr-3 font-mono text-foreground">{row.path}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">{t(row.scopeKey)}</td>
+                  <td className="py-2">{t(row.descKey)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={`shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`}
-          aria-hidden="true"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </button>
+        <p className="text-xs text-muted-foreground">{t('apiUsage.rateLimitNote')}</p>
+      </section>
 
-      {expanded && (
-        <div className="px-4 pb-4 space-y-6 border-t border-border/60 pt-4">
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold">{t('apiDocs.auth.title')}</h3>
-            <p className="text-xs sm:text-sm text-muted-foreground">{t('apiDocs.auth.description')}</p>
-            <p className="text-xs sm:text-sm text-muted-foreground">{t('apiDocs.auth.headerNote')}</p>
-            <ApiDocCodeBlock>{`Authorization: Bearer YOUR_TOKEN`}</ApiDocCodeBlock>
-          </section>
-
-          <EndpointSection
-            title={t('apiDocs.lease.title')}
-            description={t('apiDocs.lease.description')}
-            method="POST /api/lease"
-            example={curlLease(baseUrl)}
-          />
-
-          <EndpointSection
-            title={t('apiDocs.listMailboxes.title')}
-            description={t('apiDocs.listMailboxes.description')}
-            method="GET /api/mailboxes"
-            example={curlMailboxes(baseUrl)}
-          />
-
-          <EndpointSection
-            title={t('apiDocs.latestCode.title')}
-            description={t('apiDocs.latestCode.description')}
-            method="GET /api/mailboxes/:address/latest-code"
-            example={curlLatestCode(baseUrl)}
-          />
-
-          <EndpointSection
-            title={t('apiDocs.mail.title')}
-            description={t('apiDocs.mail.description')}
-            method="GET /api/mail"
-            example={curlMail(baseUrl)}
-          />
-
-          <EndpointSection
-            title={t('apiDocs.send.title')}
-            description={t('apiDocs.send.description')}
-            method="POST /api/send"
-            example={curlSend(baseUrl)}
-          />
-
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold">{t('apiDocs.python.title')}</h3>
-            <p className="text-xs sm:text-sm text-muted-foreground">{t('apiDocs.python.description')}</p>
-            <ApiDocCodeBlock>{pythonExample(baseUrl)}</ApiDocCodeBlock>
-          </section>
-
-          <div className="pt-2 border-t border-border/60">
-            <Link to="/api-docs" className="text-sm text-primary hover:underline">
-              {t('apiUsage.viewFullDocs')} →
-            </Link>
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold">{t('apiUsage.examplesTitle')}</h3>
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs font-medium font-mono mb-1">POST /api/lease</p>
+            <ApiDocCodeBlock>{curlLease(baseUrl)}</ApiDocCodeBlock>
+          </div>
+          <div>
+            <p className="text-xs font-medium font-mono mb-1">GET /api/mail</p>
+            <ApiDocCodeBlock>{curlMail(baseUrl)}</ApiDocCodeBlock>
+          </div>
+          <div>
+            <p className="text-xs font-medium font-mono mb-1">POST /api/send</p>
+            <ApiDocCodeBlock>{curlSend(baseUrl)}</ApiDocCodeBlock>
+          </div>
+          <div>
+            <p className="text-xs font-medium font-mono mb-1">GET /api/mailboxes</p>
+            <ApiDocCodeBlock>{curlMailboxes(baseUrl)}</ApiDocCodeBlock>
+          </div>
+          <div>
+            <p className="text-xs font-medium font-mono mb-1">GET /api/mailboxes/:address/latest-code</p>
+            <ApiDocCodeBlock>{curlLatestCode(baseUrl)}</ApiDocCodeBlock>
+          </div>
+          <div>
+            <p className="text-xs font-medium font-mono mb-1">GET /api/mailboxes/:address/latest-link</p>
+            <ApiDocCodeBlock>{curlLatestLink(baseUrl)}</ApiDocCodeBlock>
+          </div>
+          <div>
+            <p className="text-xs font-medium font-mono mb-1">DELETE /api/mailboxes/:address</p>
+            <ApiDocCodeBlock>{curlDeleteMailbox(baseUrl)}</ApiDocCodeBlock>
           </div>
         </div>
-      )}
+      </section>
+
+      <section className="space-y-2 pt-2 border-t border-border/60">
+        <h3 className="text-sm font-semibold">{t('apiDocs.auth.sessionVsBearerTitle')}</h3>
+        <p className="text-xs sm:text-sm text-muted-foreground">{t('apiDocs.auth.sessionVsBearer')}</p>
+      </section>
+
+      <div className="pt-2 border-t border-border/60">
+        <Link to="/api-docs" className="text-sm text-primary hover:underline">
+          {t('apiUsage.viewFullDocs')} →
+        </Link>
+      </div>
     </div>
   );
 };

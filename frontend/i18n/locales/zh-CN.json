@@ -467,11 +467,18 @@
     "subtitle": "需 Bearer Token 鉴权的程序化 API，适用于自动化注册、收验证码、发通知等场景。",
     "auth": {
       "title": "身份验证",
-      "description": "所有程序化 API 接口均需在请求头中携带 Bearer Token。",
-      "step1": "在 wrangler.toml 或 GitHub Secrets 中配置 ADMIN_PASSWORD。",
-      "step2": "访问管理后台并登录：",
-      "step3": "在「API Token」面板创建 Token 并复制保存（仅显示一次）。",
-      "headerNote": "每个请求需携带以下 Header："
+      "description": "程序化 API 需在请求头携带 Bearer Token，且 Token 须具备对应权限（lease / mail / send）。",
+      "userTokenTitle": "用户 API Token",
+      "userTokenStep1": "登录 Web 应用。",
+      "userTokenStep2": "进入 Dashboard → API Keys 创建 Token：",
+      "userTokenStep3": "立即复制 Token（仅显示一次）。",
+      "oneTokenLimit": "每位用户仅可持有一个 API Token，创建新 Token 前请先删除现有 Token。",
+      "scopesNote": "权限说明：lease（POST /api/lease）、mail（GET /api/mail、列出邮箱、latest-code/link、原始 .eml）、send（POST /api/send）。",
+      "legacyTitle": "Legacy 管理后台 Token",
+      "legacyDescription": "无用户配额限制的管理员 Token 仍可在管理后台创建：",
+      "headerNote": "每个程序化请求需携带以下 Header：",
+      "sessionVsBearerTitle": "会话 vs Bearer",
+      "sessionVsBearer": "Web 界面路由（POST /api/user/mailboxes、POST /api/user/send、浏览器收件箱/发件箱）使用登录会话 Cookie。Bearer Token 供自动化脚本调用 /api/lease、/api/mail、/api/send 等接口。匿名 POST /api/mailboxes 与 DELETE /api/mailboxes/:address 无需鉴权。"
     },
     "lease": {
       "title": "POST /api/lease — 创建随机临时邮箱",
@@ -552,8 +559,23 @@
     "backHome": "← 返回收件箱"
   },
   "apiUsage": {
-    "title": "API 使用文档",
+    "title": "API 使用说明",
     "subtitle": "Bearer Token 鉴权接口速查。将示例中的 YOUR_TOKEN 替换为上方 Token。",
-    "viewFullDocs": "完整文档"
+    "baseUrlTitle": "Base URL",
+    "tokenNoteTitle": "Token 限制与权限",
+    "endpointsTitle": "接口一览",
+    "colMethod": "方法",
+    "colPath": "路径",
+    "colScope": "权限",
+    "examplesTitle": "curl 示例",
+    "deleteDesc": "按 local-part 删除邮箱，无需 Bearer Token。",
+    "rateLimitNote": "受速率限制的接口会返回 X-RateLimit-Limit 与 X-RateLimit-Remaining（默认每 Token 每分钟 60 次）。",
+    "viewFullDocs": "完整文档",
+    "scopes": {
+      "lease": "lease",
+      "mail": "mail",
+      "send": "send",
+      "none": "—"
+    }
   }
 }

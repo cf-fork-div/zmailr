@@ -467,11 +467,18 @@
     "subtitle": "Bearer-authenticated programmatic API for automation: lease mailboxes, poll for OTP codes, and send email.",
     "auth": {
       "title": "Authentication",
-      "description": "All programmatic API endpoints require a Bearer token.",
-      "step1": "Configure ADMIN_PASSWORD in wrangler.toml or GitHub Secrets.",
-      "step2": "Visit the admin panel and log in:",
-      "step3": "Create an API token in the Token panel and copy it (shown once).",
-      "headerNote": "Include this header on every request:"
+      "description": "Programmatic endpoints require a Bearer token with the matching scope (lease / mail / send).",
+      "userTokenTitle": "User API tokens",
+      "userTokenStep1": "Log in to the web app.",
+      "userTokenStep2": "Open Dashboard → API Keys and create a token:",
+      "userTokenStep3": "Copy the token immediately — it is shown only once.",
+      "oneTokenLimit": "Each user may hold at most one API token. Delete the existing token before creating a new one.",
+      "scopesNote": "Scopes: lease (POST /api/lease), mail (GET /api/mail, list mailboxes, latest-code/link, raw .eml), send (POST /api/send).",
+      "legacyTitle": "Legacy admin tokens",
+      "legacyDescription": "Unlimited tokens without user quotas can still be created at the admin panel:",
+      "headerNote": "Include this header on every programmatic request:",
+      "sessionVsBearerTitle": "Session vs Bearer",
+      "sessionVsBearer": "Web UI routes (POST /api/user/mailboxes, POST /api/user/send, inbox/outbox in the browser) use the login session cookie. Bearer tokens are for automation scripts calling /api/lease, /api/mail, /api/send, and related programmatic endpoints. Anonymous POST /api/mailboxes and DELETE /api/mailboxes/:address require no auth."
     },
     "lease": {
       "title": "POST /api/lease — Create random mailbox",
@@ -554,6 +561,21 @@
   "apiUsage": {
     "title": "API Usage",
     "subtitle": "Quick reference for Bearer-authenticated endpoints. Replace YOUR_TOKEN with your token above.",
-    "viewFullDocs": "Full documentation"
+    "baseUrlTitle": "Base URL",
+    "tokenNoteTitle": "Token limits & scopes",
+    "endpointsTitle": "Endpoints",
+    "colMethod": "Method",
+    "colPath": "Path",
+    "colScope": "Scope",
+    "examplesTitle": "curl examples",
+    "deleteDesc": "Delete a mailbox by local-part. No Bearer token required.",
+    "rateLimitNote": "Rate-limited endpoints return X-RateLimit-Limit and X-RateLimit-Remaining (60/min per token by default).",
+    "viewFullDocs": "Full documentation",
+    "scopes": {
+      "lease": "lease",
+      "mail": "mail",
+      "send": "send",
+      "none": "—"
+    }
   }
 }

@@ -46,13 +46,20 @@
 
 ### 程序化 API
 
-需在 `/admin` 创建 API Token，请求头携带 `Authorization: Bearer <token>`：
+登录后在 **Dashboard → API Keys** 创建 Token（每位用户限 1 个，可选 scope：lease / mail / send）。Legacy 无配额 Token 仍可在 `/admin` 创建。请求头：`Authorization: Bearer <token>`。
 
-| 端点 | 说明 |
-|------|------|
-| `POST /api/lease` | 租用新的临时邮箱，返回完整地址与过期时间 |
-| `GET /api/mail?to=...` | 长轮询等待新邮件（默认最长 60s），返回 `code` 与邮件摘要 |
-| `POST /api/send` | 发送邮件（`to`、`subject`，以及 `text` 或 `html`；可选 `from` 指定已租用邮箱为发件人） |
+| 端点 | 权限 | 说明 |
+|------|------|------|
+| `POST /api/lease` | lease | 租用随机临时邮箱，返回完整地址与过期时间 |
+| `GET /api/mailboxes` | mail | 列出当前 Token 关联的活跃邮箱 |
+| `GET /api/mailboxes/:address/latest-code` | mail | 非阻塞查询最新验证码 |
+| `GET /api/mailboxes/:address/latest-link` | mail | 从最新邮件提取验证链接 |
+| `GET /api/mail?to=...` | mail | 长轮询等待新邮件（默认最长 60s），返回 `code` 与邮件摘要 |
+| `GET /api/emails/:id/raw` | mail | 下载原始 `.eml`（Bearer 或 Web 匿名） |
+| `POST /api/send` | send | 发送邮件（`to`、`subject`、`text`/`html`；可选 `from` 指定已租用邮箱） |
+| `DELETE /api/mailboxes/:address` | — | 按 local-part 删除邮箱（无需 Token） |
+
+响应头含 `X-RateLimit-Limit` / `X-RateLimit-Remaining`（默认 60 次/分钟/Token）。完整说明见 [`/api-docs`](/api-docs) 或 Dashboard API Keys 页。
 
 `/api/mail` 要点：
 
