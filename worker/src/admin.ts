@@ -41,6 +41,10 @@ td code{font-size:.75rem;background:#0f172a;padding:2px 6px;border-radius:4px;wo
 .badge{display:inline-block;padding:2px 8px;border-radius:9999px;font-size:.75rem}
 .badge-ok{background:#166534;color:#86efac}
 .badge-off{background:#7f1d1d;color:#fca5a5}
+.badge-builtin{background:#1e3a5f;color:#93c5fd}
+.section-title{font-size:1rem;color:#f8fafc;margin-bottom:8px}
+.section-desc{font-size:.75rem;color:#64748b;margin-bottom:12px}
+.section-title+.section-desc{margin-top:-4px}
 .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;justify-content:center;z-index:100;padding:20px}
 .modal.show{display:flex}
 .modal-box{background:#1e293b;padding:24px;border-radius:12px;width:100%;max-width:480px;border:1px solid #334155}
@@ -83,6 +87,10 @@ td code{font-size:.75rem;background:#0f172a;padding:2px 6px;border-radius:4px;wo
     <table><thead><tr><th>ID</th><th>名称</th><th>Token</th><th>过期时间</th><th>操作</th></tr></thead><tbody id="tokensBody"></tbody></table>
   </div>
   <div id="panel-rules" class="panel">
+    <h3 class="section-title">系统内置规则</h3>
+    <p class="section-desc">自定义规则未匹配时自动启用，不可编辑或删除</p>
+    <table><thead><tr><th>域名</th><th>说明</th><th>正则</th><th>优先级</th><th>状态</th></tr></thead><tbody id="builtinRulesBody"></tbody></table>
+    <h3 class="section-title" style="margin-top:24px">自定义规则</h3>
     <div class="toolbar">
       <button class="btn" onclick="showRuleModal()">新增规则</button>
     </div>
@@ -136,7 +144,7 @@ async function loadTokens(){const d=await api('/tokens');const b=document.getEle
 function showTokenModal(){document.getElementById('tokenName').value='';document.getElementById('tokenDays').value='30';showModal('tokenModal')}
 async function createToken(){const name=document.getElementById('tokenName').value;const days=parseInt(document.getElementById('tokenDays').value)||30;await api('/tokens',{method:'POST',body:JSON.stringify({name,expiresInDays:days})});hideModal('tokenModal');loadTokens();loadStats()}
 async function deleteToken(id){if(!confirm('确定删除此 Token？'))return;await api('/tokens/'+id,{method:'DELETE'});loadTokens();loadStats()}
-async function loadRules(){const d=await api('/rules');const b=document.getElementById('rulesBody');if(!d.rules.length){b.innerHTML='<tr><td colspan="6" class="empty">暂无规则</td></tr>';return}b.innerHTML=d.rules.map(r=>'<tr><td>'+r.id+'</td><td>'+r.domain+'</td><td><code>'+r.regex+'</code></td><td>'+r.priority+'</td><td><span class="badge '+(r.enabled?'badge-ok':'badge-off')+'">'+(r.enabled?'启用':'禁用')+'</span></td><td><button class="btn btn-sm" onclick="editRule('+r.id+')">编辑</button> <button class="btn btn-danger btn-sm" onclick="deleteRule('+r.id+')">删除</button></td></tr>').join('');window._rules=d.rules}
+async function loadRules(){const d=await api('/rules');document.getElementById('builtinRulesBody').innerHTML=(d.builtinRules||[]).map(r=>'<tr><td>'+r.domain+'</td><td>'+r.description+'</td><td><code>'+r.regex+'</code></td><td>'+r.priority+'</td><td><span class="badge badge-builtin">内置</span></td></tr>').join('');const b=document.getElementById('rulesBody');if(!d.rules.length){b.innerHTML='<tr><td colspan="6" class="empty">暂无自定义规则</td></tr>';return}b.innerHTML=d.rules.map(r=>'<tr><td>'+r.id+'</td><td>'+r.domain+'</td><td><code>'+r.regex+'</code></td><td>'+r.priority+'</td><td><span class="badge '+(r.enabled?'badge-ok':'badge-off')+'">'+(r.enabled?'启用':'禁用')+'</span></td><td><button class="btn btn-sm" onclick="editRule('+r.id+')">编辑</button> <button class="btn btn-danger btn-sm" onclick="deleteRule('+r.id+')">删除</button></td></tr>').join('');window._rules=d.rules}
 function showRuleModal(){document.getElementById('ruleModalTitle').textContent='新增提取规则';document.getElementById('ruleId').value='';document.getElementById('ruleDomain').value='*';document.getElementById('ruleRegex').value='';document.getElementById('rulePriority').value='0';document.getElementById('ruleEnabled').value='1';showModal('ruleModal')}
 function editRule(id){const r=(window._rules||[]).find(x=>x.id===id);if(!r)return;document.getElementById('ruleModalTitle').textContent='编辑提取规则';document.getElementById('ruleId').value=r.id;document.getElementById('ruleDomain').value=r.domain;document.getElementById('ruleRegex').value=r.regex;document.getElementById('rulePriority').value=r.priority;document.getElementById('ruleEnabled').value=r.enabled?'1':'0';showModal('ruleModal')}
 async function saveRule(){const id=document.getElementById('ruleId').value;const body={domain:document.getElementById('ruleDomain').value,regex:document.getElementById('ruleRegex').value,priority:parseInt(document.getElementById('rulePriority').value)||0,enabled:document.getElementById('ruleEnabled').value==='1'};if(id){await api('/rules/'+id,{method:'PUT',body:JSON.stringify(body)})}else{await api('/rules',{method:'POST',body:JSON.stringify(body)})}hideModal('ruleModal');loadRules();loadStats()}

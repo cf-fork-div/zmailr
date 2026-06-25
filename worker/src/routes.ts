@@ -26,6 +26,7 @@ import { generateRandomAddress, getMailDomain, parseMailboxAddress, getCurrentTi
 import { authenticateApiToken, isAdminAuthenticated, verifyAdminPassword, createAdminSessionCookie, clearAdminSessionCookie } from './auth';
 import { sendMail } from './sender';
 import { getAdminHtml } from './admin';
+import { getBuiltinExtractRules } from './extractor';
 
 // 创建 Hono 应用
 const app = new Hono<{ Bindings: Env }>();
@@ -489,7 +490,8 @@ app.get('/admin/api/rules', async (c) => {
   const authErr = await requireAdmin(c);
   if (authErr) return authErr;
   const rules = await listExtractRules(c.env.DB);
-  return c.json({ success: true, rules });
+  const builtinRules = getBuiltinExtractRules();
+  return c.json({ success: true, rules, builtinRules });
 });
 
 app.post('/admin/api/rules', async (c) => {

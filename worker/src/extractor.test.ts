@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { matchGenericCode, matchWithRegex } from './extractor';
+import { getBuiltinExtractRules, matchGenericCode, matchWithRegex } from './extractor';
 
 describe('matchGenericCode', () => {
   it('extracts digits after English keywords', () => {
@@ -30,6 +30,16 @@ describe('matchGenericCode', () => {
 
   it('returns null when no match', () => {
     assert.equal(matchGenericCode('Hello world'), null);
+  });
+});
+
+describe('getBuiltinExtractRules', () => {
+  it('returns built-in fallback rules with metadata', () => {
+    const rules = getBuiltinExtractRules();
+    assert.equal(rules.length, 2);
+    assert.ok(rules.every((r) => r.builtin && r.enabled && r.domain === '*'));
+    assert.ok(rules[0].regex.includes('验证码'));
+    assert.ok(rules[1].description.includes('6 位数字'));
   });
 });
 

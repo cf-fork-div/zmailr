@@ -6,9 +6,45 @@ export const GENERIC_CODE_REGEX =
   /(?:code|验证码|verification|pin|otp)(?:[是为])?[：:\s]*(\d{4,8})/i;
 
 /** 主题含验证码语义时，正文中独立的 6 位数字 */
-const SUBJECT_VERIFICATION_HINT =
+export const SUBJECT_VERIFICATION_HINT =
   /(?:验证码|verification|verify|code|otp)/i;
-const STANDALONE_SIX_DIGIT = /\b(\d{6})\b/;
+export const STANDALONE_SIX_DIGIT = /\b(\d{6})\b/;
+
+export interface BuiltinExtractRule {
+  id: string;
+  domain: string;
+  regex: string;
+  description: string;
+  priority: number;
+  enabled: true;
+  builtin: true;
+}
+
+/** 系统内置兜底规则（自定义规则未匹配时启用，只读展示于管理后台） */
+export function getBuiltinExtractRules(): BuiltinExtractRule[] {
+  return [
+    {
+      id: 'generic-keyword',
+      domain: '*',
+      regex: GENERIC_CODE_REGEX.source,
+      description:
+        '匹配 code、验证码、verification、pin、otp 等关键词后的 4–8 位数字，支持「为/是：」等中文格式',
+      priority: -100,
+      enabled: true,
+      builtin: true,
+    },
+    {
+      id: 'subject-hint-six-digit',
+      domain: '*',
+      regex: `主题 ${SUBJECT_VERIFICATION_HINT.source} + 正文 ${STANDALONE_SIX_DIGIT.source}`,
+      description:
+        '主题含验证码语义时，从正文提取独立的 6 位数字（适用于正文仅含数字、无关键词的场景）',
+      priority: -101,
+      enabled: true,
+      builtin: true,
+    },
+  ];
+}
 
 /**
  * 从邮件正文中提取验证码
