@@ -2,7 +2,7 @@
 
 `/api/send` 默认通过 [Brevo](https://www.brevo.com/)（原 Sendinblue）Transactional Email API 发信。发件地址固定为 `no-reply@你的域名`，发件人显示名 `zMailR`。
 
-> 免费计划约 **300 封/天**。若未配置 `BREVO_API_KEY`，Worker 会回退到 MailChannels（需 `MAILCHANNELS_API_KEY`）。
+> 免费计划约 **300 封/天**。`/api/send` 发信需配置 `BREVO_API_KEY`。
 
 ---
 
@@ -154,9 +154,3 @@ curl -X POST "https://你的域名/api/send" \
 | DMARC 失败 | 存在多条 `_dmarc` 记录，或 SPF/DKIM 未生效 |
 | Worker 报未配置 Key | GitHub Secret `BREVO_API_KEY` 未设置或未重新部署 |
 
----
-
-## 与 MailChannels 的关系
-
-- **推荐**：仅配置 `BREVO_API_KEY`。
-- **回退**：若未设置 Brevo Key 但设置了 `MAILCHANNELS_API_KEY`，仍走 MailChannels。详见 README 中的 MailChannels 说明（旧方案）。

@@ -14,7 +14,7 @@
 
 ---
 
-## 🚀 Fork 后通过 Github Action 自定义部署
+## Fork 后通过 Github Action 自定义部署
 
 <div style="background-color: #2d2d2d; color: #ffffff; padding: 15px; border-radius: 5px; margin: 15px 0;">
   <h4>📋 部署步骤：</h4>
@@ -30,8 +30,7 @@
         <li><code>D1_DATABASE_NAME</code>：第二步创建的 D1 数据库名称</li>
         <li><code>VITE_EMAIL_DOMAIN</code>：域名列表，多个域名用逗号分隔（例如：<code>example.com,test.com</code>）</li>
         <li><code>ADMIN_PASSWORD</code>：管理后台（<code>/admin</code>）登录密码，用于创建 API Token 和管理提取规则</li>
-        <li><code>BREVO_API_KEY</code>：<a href="docs/brevo-setup.md">Brevo</a> Transactional Email API Key，用于 <code>/api/send</code> 发信（推荐）</li>
-        <li><code>MAILCHANNELS_API_KEY</code>（可选）：MailChannels API Key，仅在未配置 Brevo 时作为回退</li>
+        <li><code>BREVO_API_KEY</code>：<a href="docs/brevo-setup.md">Brevo</a> Transactional Email API Key，用于 <code>/api/send</code> 发信</li>
       </ul>
     </li>
     <li>完成以上步骤后，项目将在每次推送到 <code>main</code> 分支时自动部署；也可在 Actions 页面手动触发</li>

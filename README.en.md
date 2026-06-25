@@ -14,7 +14,7 @@
 
 ---
 
-## 🚀 Fork and Deploy via GitHub Actions
+## Fork and Deploy via GitHub Actions
 
 <div style="background-color: #2d2d2d; color: #ffffff; padding: 15px; border-radius: 5px; margin: 15px 0;">
   <h4>📋 Deployment steps:</h4>
@@ -30,8 +30,7 @@
         <li><code>D1_DATABASE_NAME</code>: D1 database name from step 2</li>
         <li><code>VITE_EMAIL_DOMAIN</code>: Comma-separated domain list (e.g. <code>example.com,test.com</code>)</li>
         <li><code>ADMIN_PASSWORD</code>: Admin panel (<code>/admin</code>) login password for API tokens and extract rules</li>
-        <li><code>BREVO_API_KEY</code>: <a href="docs/brevo-setup.md">Brevo</a> Transactional Email API key for <code>/api/send</code> (recommended)</li>
-        <li><code>MAILCHANNELS_API_KEY</code> (optional): MailChannels API key; fallback when Brevo is not configured</li>
+        <li><code>BREVO_API_KEY</code>: <a href="docs/brevo-setup.md">Brevo</a> Transactional Email API key for <code>/api/send</code></li>
       </ul>
     </li>
     <li>After setup, the project deploys automatically on every push to <code>main</code>; you can also trigger deployment manually from the Actions page</li>
