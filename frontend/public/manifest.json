@@ -1,6 +1,6 @@
 {
-  "name": "ZMAIL-24小时匿名邮箱",
-  "short_name": "ZMAIL",
+  "name": "zMailR · 24小时临时邮箱",
+  "short_name": "zMailR",
   "description": "创建临时邮箱地址，接收邮件，无需注册，保护您的隐私安全",
   "start_url": "/",
   "display": "standalone",

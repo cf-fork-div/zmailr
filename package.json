@@ -1,7 +1,7 @@
 {
-  "name": "zmail",
+  "name": "zmailr",
   "version": "1.0.0",
-  "description": "",
+  "description": "zMailR - Enhanced fork of zaunist/zmail, 24-hour temporary email service",
   "scripts": {
     "dev:frontend": "pnpm --filter frontend run dev",
     "dev:backend": "wrangler dev",

@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "ZMAIL-24h Anonymous Email"
+    "title": "zMailR - 24h Temp Mail"
   },
   "common": {
     "loading": "Loading...",
@@ -199,14 +199,14 @@
       "title": "7. Terms Changes",
       "item1": "We have the right to modify these terms of use at any time as needed, and changes will be announced in a prominent position on the page."
     },
-    "conclusion": "Thank you for using zmail temporary email service!"
+    "conclusion": "Thank you for using zMailR temporary email service!"
   },
   "about": {
     "title": "About Us",
-    "subtitle": "Learn about the background and philosophy of zmail temporary email service.",
+    "subtitle": "Learn about the background and philosophy of zMailR temporary email service.",
     "intro": {
       "title": "Project Introduction",
-      "content": "zmail is an open source temporary email service designed to provide users with secure and convenient temporary email solutions. We are committed to protecting user privacy and avoiding spam troubles."
+      "content": "zMailR is an open source temporary email service designed to provide users with secure and convenient temporary email solutions. We are committed to protecting user privacy and avoiding spam troubles."
     },
     "features": {
       "title": "Core Features",
@@ -240,7 +240,7 @@
     },
     "tech": {
       "title": "Technical Architecture",
-      "intro": "zmail is built with modern technology stack:",
+      "intro": "zMailR is built with modern technology stack:",
       "frontend": {
         "title": "Frontend",
         "desc": "React + TypeScript + Tailwind CSS"
@@ -260,7 +260,7 @@
     },
     "opensource": {
       "title": "Open Source Information",
-      "intro": "zmail is a completely open source project that follows the MIT open source license. We welcome community contributions, suggestions or issue reports.",
+      "intro": "zMailR is a completely open source project that follows the MIT open source license. We welcome community contributions, suggestions or issue reports.",
       "github": {
         "title": "GitHub Repository"
       },
@@ -284,7 +284,7 @@
         "title": "Email"
       }
     },
-    "conclusion": "Thank you for choosing zmail temporary email service!"
+    "conclusion": "Thank you for choosing zMailR temporary email service!"
     },
   "privacy": {
     "title": "Privacy Policy",
@@ -335,6 +335,6 @@
       "title": "Contact Us",
       "item1": "If you have any questions about this privacy policy, please contact us through GitHub Issues."
     },
-    "conclusion": "Thank you for trusting and using zmail temporary email service!"
+    "conclusion": "Thank you for trusting and using zMailR temporary email service!"
   }
 }

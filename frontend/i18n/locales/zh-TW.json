@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "ZMAIL-24小時匿名信箱"
+    "title": "zMailR · 24小時臨時信箱"
   },
   "common": {
     "loading": "載入中...",
@@ -196,14 +196,14 @@
       "title": "7. 條款變更",
       "item1": "我們有權根據需要隨時修改本使用條款，變更內容將在頁面顯著位置公告。"
     },
-    "conclusion": "感謝您使用 zmail 臨時信箱服務！"
+    "conclusion": "感謝您使用 zMailR 臨時信箱服務！"
   },
   "about": {
     "title": "關於我們",
-    "subtitle": "了解 zmail 臨時信箱服務的背景和理念。",
+    "subtitle": "了解 zMailR 臨時信箱服務的背景和理念。",
     "intro": {
       "title": "專案簡介",
-      "content": "zmail 是一個開源的臨時信箱服務，旨在為使用者提供安全、便捷的臨時電子信箱解決方案。我們致力於保護使用者隱私，避免垃圾郵件的困擾。"
+      "content": "zMailR 是一個開源的臨時信箱服務，旨在為使用者提供安全、便捷的臨時電子信箱解決方案。我們致力於保護使用者隱私，避免垃圾郵件的困擾。"
     },
     "features": {
       "title": "核心特性",
@@ -237,7 +237,7 @@
     },
     "tech": {
       "title": "技術架構",
-      "intro": "zmail 採用現代化的技術堆疊構建：",
+      "intro": "zMailR 採用現代化的技術堆疊構建：",
       "frontend": {
         "title": "前端",
         "desc": "React + TypeScript + Tailwind CSS"
@@ -257,7 +257,7 @@
     },
     "opensource": {
       "title": "開源資訊",
-      "intro": "zmail 是一個完全開源的專案，遵循 MIT 開源協議。我們歡迎社群貢獻程式碼、提出建議或回報問題。",
+      "intro": "zMailR 是一個完全開源的專案，遵循 MIT 開源協議。我們歡迎社群貢獻程式碼、提出建議或回報問題。",
       "github": {
         "title": "GitHub 倉庫"
       },
@@ -281,7 +281,7 @@
         "title": "電子郵件"
       }
     },
-    "conclusion": "感謝您選擇 zmail 臨時信箱服務！"
+    "conclusion": "感謝您選擇 zMailR 臨時信箱服務！"
   },
   "privacy": {
     "title": "隱私權政策",
@@ -332,6 +332,6 @@
       "title": "聯絡我們",
       "item1": "如果您對本隱私權政策有任何疑問，請透過 GitHub Issues 聯絡我們。"
     },
-    "conclusion": "感謝您信任並使用 zmail 臨時信箱服務！"
+    "conclusion": "感謝您信任並使用 zMailR 臨時信箱服務！"
   }
 }

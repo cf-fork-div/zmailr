@@ -4,7 +4,7 @@ export function getAdminHtml(): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ZMail Admin</title>
+<title>zMailR 管理后台</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
@@ -60,7 +60,7 @@ td code{font-size:.75rem;background:#0f172a;padding:2px 6px;border-radius:4px;wo
 <body>
 <div id="loginView" class="login-wrap">
   <div class="login-box">
-    <h1>ZMail 管理后台</h1>
+    <h1>zMailR 管理后台</h1>
     <div id="loginError" class="error"></div>
     <input type="password" id="passwordInput" placeholder="管理员密码" autocomplete="current-password">
     <button onclick="doLogin()">登录</button>
@@ -68,7 +68,7 @@ td code{font-size:.75rem;background:#0f172a;padding:2px 6px;border-radius:4px;wo
 </div>
 <div id="appView" class="app">
   <header>
-    <h1>ZMail 管理后台</h1>
+    <h1>zMailR 管理后台</h1>
     <button class="logout" onclick="doLogout()">退出登录</button>
   </header>
   <div class="tabs">

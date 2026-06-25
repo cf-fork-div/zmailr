@@ -1,13 +1,15 @@
-# <div align="center">🚀 ZMAIL - 24小时临时邮箱服务</div>
+# <div align="center">🚀 zMailR · 24小时临时邮箱服务</div>
 
 <div align="center">
   <p>
     <a href="./README.en.md">English</a> | <strong>简体中文</strong>
   </p>
 
+  <p><strong>Enhanced fork of <a href="https://github.com/zaunist/zmail">zaunist/zmail</a></strong>（MIT License）</p>
+
   <p>如果这个项目对您有帮助，请考虑给它一个 ⭐️ Star ⭐️，这将是对我最大的鼓励！</p>
 
-  <img src="frontend/public/favicon.svg" alt="ZMAIL Logo" width="120" height="120" style="background-color: #4f46e5; padding: 20px; border-radius: 12px; margin: 20px 0;">
+  <img src="frontend/public/favicon.svg" alt="zMailR Logo" width="120" height="120" style="background-color: #4f46e5; padding: 20px; border-radius: 12px; margin: 20px 0;">
 
   <h3>💌 安全、简单、即用即走的临时邮箱服务</h3>
 
@@ -56,7 +58,7 @@
 
 ## 🚀 快速部署
 
-ZMAIL 现在采用全新的一体化部署方式，前端和后端整合为一个 Cloudflare Worker，部署更加简单！
+zMailR 现在采用全新的一体化部署方式，前端和后端整合为一个 Cloudflare Worker，部署更加简单！
 
 ### 🎯 部署方式选择
 
@@ -219,7 +221,7 @@ pnpm run deploy
 
 ## 🔌 程序化 API
 
-除 Web 前端使用的 `/api/mailboxes` 等接口外，ZMAIL 还提供需 **Bearer Token** 鉴权的程序化 API，适合自动化注册、收验证码、发通知等场景。
+除 Web 前端使用的 `/api/mailboxes` 等接口外，zMailR 还提供需 **Bearer Token** 鉴权的程序化 API，适合自动化注册、收验证码、发通知等场景。
 
 ### 获取 API Token
 

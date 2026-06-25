@@ -1,13 +1,15 @@
-# <div align="center">🚀 ZMAIL - 24-hour Temporary Email Service</div>
+# <div align="center">🚀 zMailR - 24-hour Temporary Email Service</div>
 
 <div align="center">
   <p>
     <strong>English</strong> | <a href="./README.md">中文</a>
   </p>
 
+  <p><strong>Enhanced fork of <a href="https://github.com/zaunist/zmail">zaunist/zmail</a></strong> (MIT License)</p>
+
   <p>If you find this project helpful, please consider giving it a ⭐️ Star ⭐️. Your support is greatly appreciated!</p>
 
-  <img src="frontend/public/favicon.svg" alt="ZMAIL Logo" width="120" height="120" style="background-color: #4f46e5; padding: 20px; border-radius: 12px; margin: 20px 0;">
+  <img src="frontend/public/favicon.svg" alt="zMailR Logo" width="120" height="120" style="background-color: #4f46e5; padding: 20px; border-radius: 12px; margin: 20px 0;">
 
   <h3>💌 Secure, Simple, Disposable Email Service</h3>
 
@@ -61,7 +63,7 @@
 
 ## 🚀 Quick Deployment
 
-ZMAIL now adopts a brand new integrated deployment approach, with frontend and backend integrated into a single Cloudflare Worker, making deployment even simpler!
+zMailR now adopts a brand new integrated deployment approach, with frontend and backend integrated into a single Cloudflare Worker, making deployment even simpler!
 
 ### 🎯 Deployment Options
 
@@ -223,7 +225,7 @@ pnpm run deploy
 
 ## 🔌 Programmatic API
 
-In addition to the Web frontend routes (`/api/mailboxes`, etc.), ZMAIL exposes Bearer-authenticated APIs for automation: registration flows, OTP retrieval, notifications, and more.
+In addition to the Web frontend routes (`/api/mailboxes`, etc.), zMailR exposes Bearer-authenticated APIs for automation: registration flows, OTP retrieval, notifications, and more.
 
 ### Obtain an API Token
 
