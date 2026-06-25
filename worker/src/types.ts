@@ -9,6 +9,8 @@ export interface Env {
   ADMIN_PASSWORD?: string;
   BREVO_API_KEY?: string;
   MAILCHANNELS_API_KEY?: string;
+  /** Default Bearer token requests per minute (optional). */
+  RATE_LIMIT_PER_MIN?: string;
 }
 
 export type UserRole = 'admin' | 'user';

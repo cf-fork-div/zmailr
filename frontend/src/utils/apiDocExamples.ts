@@ -33,7 +33,8 @@ export function curlRawEmail(baseUrl: string): string {
 }
 
 export const rateLimitHeaderExample = `X-RateLimit-Limit: 60
-X-RateLimit-Remaining: 59`;
+X-RateLimit-Remaining: 59
+Retry-After: 45`;
 
 export function curlMail(baseUrl: string): string {
   return `curl "${baseUrl}/api/mail?to=abc123@example.com&timeout=60" \\
