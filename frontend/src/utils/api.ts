@@ -257,6 +257,7 @@ export interface AuthTokenSummary {
 }
 
 export interface AuthStats {
+  mailboxesCount: number;
   messagesReceivedCount: number;
   customRulesCount: number;
   token: AuthTokenSummary | null;

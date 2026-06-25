@@ -1248,6 +1248,13 @@ export async function deleteUserToken(db: D1Database, userId: number, tokenId: n
   return (result.meta?.changes ?? 0) > 0;
 }
 
+export async function countUserMailboxes(db: D1Database, userId: number): Promise<number> {
+  const result = await db.prepare(
+    `SELECT COUNT(*) AS count FROM mailboxes WHERE user_id = ?`
+  ).bind(userId).first();
+  return (result?.count as number) ?? 0;
+}
+
 export async function countEmailsReceivedForUser(db: D1Database, userId: number): Promise<number> {
   const result = await db.prepare(
     `SELECT COUNT(*) AS count FROM emails e

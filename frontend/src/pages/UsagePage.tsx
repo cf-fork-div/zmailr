@@ -22,6 +22,10 @@ const CopyIcon = () => (
   </svg>
 );
 
+const SectionHeading: React.FC<{ title: string }> = ({ title }) => (
+  <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
+);
+
 const UsagePage: React.FC = () => {
   const { t } = useTranslation();
   const { user, usage, stats, refresh } = useAuth();
@@ -31,17 +35,13 @@ const UsagePage: React.FC = () => {
 
   const quota = user?.dailySendQuota ?? 0;
   const sendCount = usage?.sendCount ?? 0;
-  const leaseCount = usage?.leaseCount ?? 0;
-  const remaining = usage?.sendRemaining ?? user?.sendRemaining;
-
-  const quotaLabel = quota < 0 ? t('auth.unlimited') : String(quota);
-  const remainingLabel = remaining === undefined
-    ? '—'
-    : remaining < 0
-      ? t('auth.unlimited')
-      : String(remaining);
+  const quotaTotalLabel = quota < 0 ? t('auth.unlimited') : String(quota);
+  const outboxQuotaValue = `${sendCount} / ${quotaTotalLabel}`;
 
   const token = stats?.token ?? null;
+  const scopeLabels = token
+    ? token.scopes.map((s) => (SCOPE_I18N[s] ? t(SCOPE_I18N[s]) : s)).join(', ')
+    : '';
 
   useEffect(() => {
     if (!user?.id || !token?.id) {
@@ -64,7 +64,7 @@ const UsagePage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-8">
       <DashboardPageHeader
         breadcrumb={t('dashboard.breadcrumbUsage')}
         title={t('dashboard.usageTitle')}
@@ -81,46 +81,8 @@ const UsagePage: React.FC = () => {
         }
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <StatCard
-          label={t('auth.dailyQuota')}
-          value={quotaLabel}
-          icon="fas fa-paper-plane"
-          hint={`${t('dashboard.usedToday')}: ${sendCount}`}
-        />
-        <StatCard
-          label={t('dashboard.statRemaining')}
-          value={remainingLabel}
-          icon="fas fa-hourglass-half"
-        />
-        <StatCard
-          label={t('dashboard.leaseCount')}
-          value={leaseCount}
-          icon="fas fa-envelope-open"
-          hint={t('dashboard.leaseCountHint')}
-        />
-        <StatCard
-          label={t('dashboard.messagesReceived')}
-          value={stats?.messagesReceivedCount ?? 0}
-          icon="fas fa-inbox"
-          hint={t('dashboard.messagesReceivedHint')}
-        />
-        <StatCard
-          label={t('dashboard.customRulesCount')}
-          value={stats?.customRulesCount ?? 0}
-          icon="fas fa-filter"
-          hint={t('dashboard.customRulesCountHint')}
-        />
-        <StatCard
-          label={t('dashboard.usedToday')}
-          value={sendCount}
-          icon="fas fa-chart-line"
-          hint={t('dashboard.usedTodayHint')}
-        />
-      </div>
-
-      <div className="space-y-3">
-        <h2 className="font-semibold">{t('auth.profile')}</h2>
+      <section className="space-y-3">
+        <SectionHeading title={t('dashboard.sectionProfile')} />
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatCard
             label={t('auth.username')}
@@ -138,56 +100,89 @@ const UsagePage: React.FC = () => {
             icon="fas fa-calendar-day"
           />
         </div>
-      </div>
+      </section>
 
-      <div className="border rounded-lg p-4 bg-card space-y-3">
-        <h2 className="font-semibold">{t('dashboard.tokenInfo')}</h2>
-        {token ? (
-          <>
-            <div className="text-sm space-y-1">
-              <p>
-                <span className="text-muted-foreground">{t('tokens.nameLabel')}:</span>{' '}
-                <span className="font-medium">{token.name || `#${token.id}`}</span>
-              </p>
-              <p>
-                <span className="text-muted-foreground">{t('tokens.permissionsLabel')}:</span>{' '}
-                {token.scopes
-                  .map((s) => (SCOPE_I18N[s] ? t(SCOPE_I18N[s]) : s))
-                  .join(', ')}
-              </p>
-              <p>
-                <span className="text-muted-foreground">{t('tokens.expiresAtLabel')}:</span>{' '}
-                {fmtTime(token.expiresAt)}
-              </p>
-            </div>
-            {storedTokenPlaintext ? (
-              <button
-                type="button"
-                onClick={() => copyToken(storedTokenPlaintext)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
-                title={t('tokens.copyOneClick')}
-              >
-                <CopyIcon />
-                {copied ? t('common.copied') : t('tokens.copyOneClick')}
-              </button>
-            ) : (
-              <div className="space-y-1.5">
-                <p className="text-xs text-muted-foreground">{t('tokens.copyUnavailable')}</p>
-                <Link to="/dashboard/api-keys" className="text-xs text-primary hover:underline">
-                  {t('tokens.recreateToCopy')} → {t('dashboard.apiKeys')}
-                </Link>
+      {token && (
+        <section className="space-y-3">
+          <SectionHeading title={t('dashboard.sectionApiToken')} />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <StatCard
+              label={t('tokens.expiresAtLabel')}
+              value={fmtTime(token.expiresAt)}
+              icon="fas fa-clock"
+            />
+            <StatCard
+              label={t('tokens.permissionsLabel')}
+              value={scopeLabels || '—'}
+              icon="fas fa-key"
+            />
+            <div className="rounded-lg border bg-card p-4 flex flex-col justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {t('tokens.copyOneClick')}
+                </p>
+                {storedTokenPlaintext ? null : (
+                  <p className="text-sm text-muted-foreground mt-1">{t('tokens.copyUnavailable')}</p>
+                )}
               </div>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {t('dashboard.noToken')}{' '}
-            <Link to="/dashboard/api-keys" className="text-primary hover:underline">
-              {t('dashboard.apiKeys')}
-            </Link>
-          </p>
-        )}
-      </div>
+              {storedTokenPlaintext ? (
+                <button
+                  type="button"
+                  onClick={() => copyToken(storedTokenPlaintext)}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto"
+                  title={t('tokens.copyOneClick')}
+                >
+                  <CopyIcon />
+                  {copied ? t('common.copied') : t('tokens.copyOneClick')}
+                </button>
+              ) : (
+                <Link
+                  to="/dashboard/api-keys"
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md border hover:bg-muted w-full sm:w-auto text-center"
+                >
+                  {t('tokens.recreateToCopy')} →
+                </Link>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section className="space-y-3">
+        <SectionHeading title={t('dashboard.sectionInbox')} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard
+            label={t('dashboard.randomMailbox')}
+            value={stats?.mailboxesCount ?? 0}
+            icon="fas fa-envelope-open"
+            hint={t('dashboard.randomMailboxHint')}
+          />
+          <StatCard
+            label={t('dashboard.messagesReceived')}
+            value={stats?.messagesReceivedCount ?? 0}
+            icon="fas fa-inbox"
+            hint={t('dashboard.messagesReceivedHint')}
+          />
+          <StatCard
+            label={t('dashboard.customRulesCount')}
+            value={stats?.customRulesCount ?? 0}
+            icon="fas fa-filter"
+            hint={t('dashboard.customRulesCountHint')}
+          />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <SectionHeading title={t('dashboard.sectionOutbox')} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <StatCard
+            label={t('dashboard.outboxQuotaUsedTotal')}
+            value={outboxQuotaValue}
+            icon="fas fa-paper-plane"
+            hint={t('dashboard.outboxQuotaUsedTotalHint')}
+          />
+        </div>
+      </section>
     </div>
   );
 };

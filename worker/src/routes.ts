@@ -34,6 +34,7 @@ import {
   deleteUserToken,
   getDailyUsage,
   countEmailsReceivedForUser,
+  countUserMailboxes,
   countUserExtractRules,
   getUserTokenSummary,
   checkSendQuota,
@@ -501,7 +502,8 @@ app.get('/api/auth/me', async (c) => {
   if (authErr) return authErr;
   const user = c.get('user')!;
   const usage = await getDailyUsage(c.env.DB, user.id);
-  const [messagesReceivedCount, customRulesCount, token] = await Promise.all([
+  const [mailboxesCount, messagesReceivedCount, customRulesCount, token] = await Promise.all([
+    countUserMailboxes(c.env.DB, user.id),
     countEmailsReceivedForUser(c.env.DB, user.id),
     countUserExtractRules(c.env.DB, user.id),
     getUserTokenSummary(c.env.DB, user.id),
@@ -526,6 +528,7 @@ app.get('/api/auth/me', async (c) => {
       sendRemaining,
     },
     stats: {
+      mailboxesCount,
       messagesReceivedCount,
       customRulesCount,
       token,
