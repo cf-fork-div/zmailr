@@ -375,6 +375,12 @@ print(mail.get("code"))
 
 欢迎提交Pull Request或Issue来改进这个项目！
 
+---
+
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=jia0327/zmailr&type=Date)](https://star-history.com/#jia0327/zmailr&Date)
+
 ## 📄 许可证
 
 [MIT License](./LICENSE)

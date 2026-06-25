@@ -377,6 +377,12 @@ Steps:
 
 Contributions via Pull Requests or Issues are welcome!
 
+---
+
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=jia0327/zmailr&type=Date)](https://star-history.com/#jia0327/zmailr&Date)
+
 ## 📄 License
 
 [MIT License](./LICENSE)
