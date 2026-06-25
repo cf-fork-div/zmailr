@@ -30,6 +30,9 @@
     "tokenCreateFailed": "Failed to create token"
   },
   "tokens": {
+    "nameLabel": "API name",
+    "permissionsLabel": "Permissions",
+    "expiresAtLabel": "Expiration time",
     "expiresDaysLabel": "Validity (days)",
     "expiresDaysPlaceholder": "30",
     "daysUnit": "days",
@@ -54,12 +57,10 @@
   },
   "dashboard": {
     "sectionActions": "Actions",
-    "sectionSettings": "Settings",
     "inbox": "Inbox",
     "outbox": "Outbox",
     "apiKeys": "API Keys",
     "usage": "Usage",
-    "billing": "Billing",
     "docs": "Docs",
     "inboxTitle": "Inbox",
     "inboxSubtitle": "Receive temp mail, view OTP codes and attachments",

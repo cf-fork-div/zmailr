@@ -158,28 +158,42 @@ const ApiTokenManager: React.FC<ApiTokenManagerProps> = ({ compact = false }) =>
         ) : tokens.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('auth.noTokens')}</p>
         ) : (
-          <div className="space-y-2">
-            {tokens.map((tok) => (
-              <div key={tok.id} className="flex items-center justify-between text-sm border-b py-2 last:border-b-0">
-                <div className="min-w-0">
-                  <span className="font-medium">{tok.name || `#${tok.id}`}</span>
-                  <span className="text-muted-foreground ml-2">
-                    {tok.scopes
-                      .map((s) =>
-                        s in SCOPE_I18N ? t(SCOPE_I18N[s as (typeof ALL_SCOPES)[number]].label) : s
-                      )
-                      .join(', ')}
-                  </span>
-                  <span className="text-muted-foreground ml-2 hidden sm:inline">{fmtTime(tok.expiresAt)}</span>
-                </div>
-                <button
-                  onClick={() => handleDeleteToken(tok.id)}
-                  className="text-destructive hover:underline text-xs shrink-0 ml-2"
-                >
-                  {t('common.delete')}
-                </button>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs font-medium text-muted-foreground border-b">
+                  <th className="pb-2 pr-4 font-medium">{t('tokens.nameLabel')}</th>
+                  <th className="pb-2 pr-4 font-medium">{t('tokens.permissionsLabel')}</th>
+                  <th className="pb-2 pr-4 font-medium">{t('tokens.expiresAtLabel')}</th>
+                  <th className="pb-2 w-16" />
+                </tr>
+              </thead>
+              <tbody>
+                {tokens.map((tok) => (
+                  <tr key={tok.id} className="border-b last:border-b-0">
+                    <td className="py-2 pr-4 font-medium">{tok.name || `#${tok.id}`}</td>
+                    <td className="py-2 pr-4 text-muted-foreground">
+                      {tok.scopes
+                        .map((s) =>
+                          s in SCOPE_I18N ? t(SCOPE_I18N[s as (typeof ALL_SCOPES)[number]].label) : s
+                        )
+                        .join(', ')}
+                    </td>
+                    <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap">
+                      {fmtTime(tok.expiresAt)}
+                    </td>
+                    <td className="py-2 text-right">
+                      <button
+                        onClick={() => handleDeleteToken(tok.id)}
+                        className="text-destructive hover:underline text-xs"
+                      >
+                        {t('common.delete')}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

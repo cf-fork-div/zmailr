@@ -30,6 +30,9 @@
     "tokenCreateFailed": "创建 Token 失败"
   },
   "tokens": {
+    "nameLabel": "API 名称",
+    "permissionsLabel": "权限",
+    "expiresAtLabel": "过期时间",
     "expiresDaysLabel": "有效期（天）",
     "expiresDaysPlaceholder": "30",
     "daysUnit": "天",
@@ -54,12 +57,10 @@
   },
   "dashboard": {
     "sectionActions": "操作",
-    "sectionSettings": "设置",
     "inbox": "收件箱",
     "outbox": "发件箱",
     "apiKeys": "API 密钥",
     "usage": "用法",
-    "billing": "账单",
     "docs": "文档",
     "inboxTitle": "收件箱",
     "inboxSubtitle": "接收临时邮件，查看验证码与附件",

@@ -69,18 +69,6 @@ const DashboardSidebar: React.FC = () => {
             </NavLink>
           </div>
         </div>
-
-        <div>
-          <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            {t('dashboard.sectionSettings')}
-          </p>
-          <div className="space-y-1">
-            <span className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground/50 cursor-not-allowed">
-              <i className="fas fa-credit-card w-4 text-center" />
-              {t('dashboard.billing')}
-            </span>
-          </div>
-        </div>
       </nav>
 
       <div className="p-3 border-t space-y-2">
