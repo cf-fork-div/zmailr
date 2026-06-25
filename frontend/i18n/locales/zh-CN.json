@@ -270,9 +270,6 @@
     "clickToCopy": "点击复制"
   },
   "settings": {
-    "language": "语言",
-    "languageZhCN": "简体中文",
-    "languageEn": "English",
     "toggleTheme": "切换主题"
   },
   "seo": {
@@ -505,7 +502,7 @@
     },
     "section5": {
       "title": "Cookies使用",
-      "item1": "我们可能使用Cookies来改善用户体验，如保存语言偏好。",
+      "item1": "我们可能使用 Cookies 来改善用户体验，如保存主题偏好。",
       "item2": "您可以通过浏览器设置禁用Cookies，但这可能影响网站功能。",
       "item3": "我们不使用Cookies跟踪个人身份信息。"
     },

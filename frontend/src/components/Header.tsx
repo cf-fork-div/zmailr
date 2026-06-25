@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import LanguageSwitcher from './LanguageSwitcher';
 import HeaderMailbox from './HeaderMailbox';
 import ComposeModal from './ComposeModal';
 import Container from './Container';
@@ -97,7 +96,6 @@ const Header: React.FC<HeaderProps> = ({
               </Link>
             )}
             <ThemeSwitcher />
-            <LanguageSwitcher />
             <a
               href="https://github.com/jia0327/zmailr"
               target="_blank"

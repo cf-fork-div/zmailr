@@ -3,7 +3,6 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import ThemeSwitcher from './ThemeSwitcher';
-import LanguageSwitcher from './LanguageSwitcher';
 
 interface DashboardSidebarProps {
   collapsed: boolean;
@@ -142,7 +141,6 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
       <div className={`border-t space-y-2 ${collapsed ? 'md:p-2 p-3' : 'p-3'}`}>
         <div className={`flex items-center ${collapsed ? 'md:justify-center gap-1 px-1' : 'gap-1 px-1'}`}>
           <ThemeSwitcher />
-          <LanguageSwitcher />
         </div>
         <div className={`flex flex-col gap-1 text-sm ${collapsed ? 'md:items-center' : ''}`}>
           <NavLink to="/api-docs" className={navLinkClass} title={t('dashboard.docs')} onClick={handleNavClick}>

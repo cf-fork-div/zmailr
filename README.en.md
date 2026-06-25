@@ -5,6 +5,8 @@
     <strong>English</strong> | <a href="./README.md">中文</a>
   </p>
 
+  <p><em>Web UI is Chinese (zh-CN) only.</em></p>
+
   <p><strong>Enhanced fork of <a href="https://github.com/zaunist/zmail">zaunist/zmail</a></strong> (MIT License)</p>
 
   <p>

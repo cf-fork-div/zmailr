@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import Container from './Container';
 import SEO from './SEO';
 import ThemeSwitcher from './ThemeSwitcher';
-import LanguageSwitcher from './LanguageSwitcher';
 import { useAuth } from '../contexts/AuthContext';
 
 const PublicLayout: React.FC = () => {
@@ -31,7 +30,6 @@ const PublicLayout: React.FC = () => {
                 </Link>
               )}
               <ThemeSwitcher />
-              <LanguageSwitcher />
             </div>
           </div>
         </Container>
