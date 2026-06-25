@@ -550,5 +550,10 @@
       "deleteUserNote": "No DELETE /api/user/mailboxes endpoint yet; use DELETE /api/mailboxes/:address from the web UI."
     },
     "backHome": "← Back to inbox"
+  },
+  "apiUsage": {
+    "title": "API Usage",
+    "subtitle": "Quick reference for Bearer-authenticated endpoints. Replace YOUR_TOKEN with your token above.",
+    "viewFullDocs": "Full documentation"
   }
 }

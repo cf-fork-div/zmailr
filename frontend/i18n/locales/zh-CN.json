@@ -550,5 +550,10 @@
       "deleteUserNote": "尚无 DELETE /api/user/mailboxes 接口；Web 端删除请使用 DELETE /api/mailboxes/:address。"
     },
     "backHome": "← 返回收件箱"
+  },
+  "apiUsage": {
+    "title": "API 使用文档",
+    "subtitle": "Bearer Token 鉴权接口速查。将示例中的 YOUR_TOKEN 替换为上方 Token。",
+    "viewFullDocs": "完整文档"
   }
 }

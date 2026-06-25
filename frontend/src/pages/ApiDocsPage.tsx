@@ -2,87 +2,22 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import Container from '../components/Container';
-
-const CodeBlock: React.FC<{ children: string }> = ({ children }) => (
-  <pre className="bg-muted rounded-md p-4 overflow-x-auto text-sm leading-relaxed">
-    <code className="text-foreground">{children}</code>
-  </pre>
-);
+import ApiDocCodeBlock from '../components/ApiDocCodeBlock';
+import {
+  curlLatestCode,
+  curlLease,
+  curlMail,
+  curlSend,
+  getApiBaseUrl,
+  leaseResponse,
+  mailResponse,
+  pythonExample,
+  sendResponse,
+} from '../utils/apiDocExamples';
 
 const ApiDocsPage: React.FC = () => {
   const { t } = useTranslation();
-  const baseUrl = useMemo(
-    () => (typeof window !== 'undefined' ? window.location.origin : 'https://你的域名'),
-    []
-  );
-
-  const curlLease = `curl -X POST "${baseUrl}/api/lease" \\
-  -H "Authorization: Bearer YOUR_TOKEN"`;
-
-  const curlMail = `curl "${baseUrl}/api/mail?to=abc123@example.com&timeout=60" \\
-  -H "Authorization: Bearer YOUR_TOKEN"`;
-
-  const curlSend = `curl -X POST "${baseUrl}/api/send" \\
-  -H "Authorization: Bearer YOUR_TOKEN" \\
-  -H "Content-Type: application/json" \\
-  -d '{"to":"user@qq.com","subject":"Hello","text":"Plain text body","from":"abc123@example.com"}'`;
-
-  const leaseResponse = `{
-  "success": true,
-  "email": "abc123@example.com",
-  "address": "abc123",
-  "expiresAt": 1719360000
-}`;
-
-  const mailResponse = `{
-  "success": true,
-  "code": "123456",
-  "email": {
-    "id": "...",
-    "subject": "Your verification code",
-    "from": "noreply@service.com",
-    "receivedAt": 1719350000
-  }
-}`;
-
-  const sendResponse = `{
-  "success": true,
-  "sentEmailId": 42
-}`;
-
-  const pythonExample = `import requests
-
-BASE = "${baseUrl}"
-TOKEN = "YOUR_TOKEN"
-headers = {"Authorization": f"Bearer {TOKEN}"}
-
-# 1. Lease a temporary mailbox
-lease = requests.post(f"{BASE}/api/lease", headers=headers).json()
-email = lease["email"]
-print(f"Mailbox: {email}")
-
-# 2. Long-poll for verification code (up to 60s)
-mail = requests.get(
-    f"{BASE}/api/mail",
-    headers=headers,
-    params={"to": email, "timeout": 60},
-    timeout=65,
-).json()
-print(f"Code: {mail.get('code')}")
-
-# 3. Optional: send email via Brevo (/api/send)
-# Omit "from" to use no-reply@your-domain; set "from" to the leased mailbox to send as that address.
-send = requests.post(
-    f"{BASE}/api/send",
-    headers=headers,
-    json={
-        "to": "user@qq.com",
-        "subject": "Hello from zMailR",
-        "text": "Plain text body",
-        "from": email,
-    },
-).json()
-print(send)`;
+  const baseUrl = useMemo(getApiBaseUrl, []);
 
   return (
     <Container>
@@ -106,49 +41,48 @@ print(send)`;
             <li>{t('apiDocs.auth.step3')}</li>
           </ol>
           <p className="text-sm text-muted-foreground">{t('apiDocs.auth.headerNote')}</p>
-          <CodeBlock>{`Authorization: Bearer <your-api-token>`}</CodeBlock>
+          <ApiDocCodeBlock>{`Authorization: Bearer <your-api-token>`}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">{t('apiDocs.lease.title')}</h2>
           <p className="text-sm text-muted-foreground">{t('apiDocs.lease.description')}</p>
           <p className="text-sm font-medium">POST /api/lease</p>
-          <CodeBlock>{curlLease}</CodeBlock>
+          <ApiDocCodeBlock>{curlLease(baseUrl)}</ApiDocCodeBlock>
           <p className="text-sm text-muted-foreground">{t('apiDocs.responseExample')}</p>
-          <CodeBlock>{leaseResponse}</CodeBlock>
+          <ApiDocCodeBlock>{leaseResponse}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">{t('apiDocs.listMailboxes.title')}</h2>
           <p className="text-sm text-muted-foreground">{t('apiDocs.listMailboxes.description')}</p>
           <p className="text-sm font-medium">GET /api/mailboxes</p>
-          <CodeBlock>{`curl "${baseUrl}/api/mailboxes" \\
-  -H "Authorization: Bearer YOUR_TOKEN"`}</CodeBlock>
+          <ApiDocCodeBlock>{`curl "${baseUrl}/api/mailboxes" \\
+  -H "Authorization: Bearer YOUR_TOKEN"`}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">{t('apiDocs.latestCode.title')}</h2>
           <p className="text-sm text-muted-foreground">{t('apiDocs.latestCode.description')}</p>
           <p className="text-sm font-medium">GET /api/mailboxes/:address/latest-code</p>
-          <CodeBlock>{`curl "${baseUrl}/api/mailboxes/abc123/latest-code" \\
-  -H "Authorization: Bearer YOUR_TOKEN"`}</CodeBlock>
+          <ApiDocCodeBlock>{curlLatestCode(baseUrl)}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">{t('apiDocs.latestLink.title')}</h2>
           <p className="text-sm text-muted-foreground">{t('apiDocs.latestLink.description')}</p>
           <p className="text-sm font-medium">GET /api/mailboxes/:address/latest-link</p>
-          <CodeBlock>{`curl "${baseUrl}/api/mailboxes/abc123/latest-link" \\
-  -H "Authorization: Bearer YOUR_TOKEN"`}</CodeBlock>
+          <ApiDocCodeBlock>{`curl "${baseUrl}/api/mailboxes/abc123/latest-link" \\
+  -H "Authorization: Bearer YOUR_TOKEN"`}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">{t('apiDocs.rawEmail.title')}</h2>
           <p className="text-sm text-muted-foreground">{t('apiDocs.rawEmail.description')}</p>
           <p className="text-sm font-medium">GET /api/emails/:id/raw</p>
-          <CodeBlock>{`curl "${baseUrl}/api/emails/EMAIL_ID/raw" \\
+          <ApiDocCodeBlock>{`curl "${baseUrl}/api/emails/EMAIL_ID/raw" \\
   -H "Authorization: Bearer YOUR_TOKEN" \\
-  -o message.eml`}</CodeBlock>
+  -o message.eml`}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">
@@ -216,9 +150,9 @@ print(send)`;
               </tbody>
             </table>
           </div>
-          <CodeBlock>{curlMail}</CodeBlock>
+          <ApiDocCodeBlock>{curlMail(baseUrl)}</ApiDocCodeBlock>
           <p className="text-sm text-muted-foreground">{t('apiDocs.responseExample')}</p>
-          <CodeBlock>{mailResponse}</CodeBlock>
+          <ApiDocCodeBlock>{mailResponse}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">
@@ -253,15 +187,15 @@ print(send)`;
               </tbody>
             </table>
           </div>
-          <CodeBlock>{curlSend}</CodeBlock>
+          <ApiDocCodeBlock>{curlSend(baseUrl)}</ApiDocCodeBlock>
           <p className="text-sm text-muted-foreground">{t('apiDocs.responseExample')}</p>
-          <CodeBlock>{sendResponse}</CodeBlock>
+          <ApiDocCodeBlock>{sendResponse}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">{t('apiDocs.python.title')}</h2>
           <p className="text-sm text-muted-foreground">{t('apiDocs.python.description')}</p>
-          <CodeBlock>{pythonExample}</CodeBlock>
+          <ApiDocCodeBlock>{pythonExample(baseUrl)}</ApiDocCodeBlock>
         </section>
 
         <section className="space-y-4">

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import ApiTokenManager from '../components/ApiTokenManager';
+import ApiUsageDocs from '../components/ApiUsageDocs';
 import DashboardPageHeader from '../components/DashboardPageHeader';
 
 const ApiKeysPage: React.FC = () => {
@@ -14,6 +15,7 @@ const ApiKeysPage: React.FC = () => {
         subtitle={t('dashboard.apiKeysSubtitle')}
       />
       <ApiTokenManager />
+      <ApiUsageDocs />
     </div>
   );
 };
