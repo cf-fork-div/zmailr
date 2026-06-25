@@ -82,6 +82,48 @@
 
 管理后台 URL 为 `https://你的域名/{ADMIN_PATH}`，需配置 `ADMIN_PASSWORD` 登录。详见 [admin-guide.md](docs/admin-guide.md)。
 
+#### 仪表盘
+
+![管理后台仪表盘](docs/screenshots/admin-dashboard.png)
+
+用户/邮箱/收发信统计与 Brevo 套餐信息。
+
+#### 用户管理
+
+![管理后台用户](docs/screenshots/admin-users.png)
+
+创建/编辑用户、日发信配额与速率方案（Free / Pro / Team）。
+
+#### 公告
+
+![管理后台公告](docs/screenshots/admin-announcements.png)
+
+面向 Dashboard 用户的系统公告（Markdown/纯文本）。
+
+#### 提取规则（管理）
+
+![管理后台提取规则](docs/screenshots/admin-rules.png)
+
+全局内置规则与所有用户自定义规则汇总。
+
+#### 限流监控
+
+![管理后台限流监控](docs/screenshots/admin-ratelimit.png)
+
+今日 429 次数、Top IP / Top 用户排行。
+
+#### 系统设置
+
+![管理后台系统设置](docs/screenshots/admin-settings.png)
+
+维护模式：可选阻断 lease、发信、创建邮箱等 API。
+
+#### 审计日志
+
+![管理后台审计日志](docs/screenshots/admin-audit.png)
+
+管理员与用户关键操作记录，按日期筛选。
+
 ---
 
 ## 使用指南（简要）
