@@ -113,4 +113,4 @@ Legacy **无配额 API Token** 仍可通过管理 API（`GET/POST/DELETE /{ADMIN
 
 - [用户认证与 API Token](./user-auth.md)
 - [Brevo 发信配置](./brevo-setup.md)
-- [README 快速部署](../README.md)
+- [部署指南](./deploy.md)
