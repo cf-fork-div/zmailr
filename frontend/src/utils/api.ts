@@ -362,4 +362,95 @@ export const getUserSentEmails = async (limit = 50) => {
   } catch {
     return { success: false as const, error: 'Network error' };
   }
+};
+
+export interface ExtractRuleItem {
+  id: number;
+  domain: string;
+  regex: string;
+  priority: number;
+  enabled: boolean;
+  createdAt?: number;
+}
+
+export interface BuiltinExtractRuleItem {
+  id: string;
+  domain: string;
+  regex: string;
+  priority: number;
+  enabled: boolean;
+  description: string;
+  builtin: true;
+}
+
+export const getUserExtractRules = async () => {
+  try {
+    const response = await fetch(apiUrl('/api/user/extract-rules'), fetchOpts);
+    if (response.status === 401) return { success: false as const, error: 'Unauthorized' };
+    const data = await response.json();
+    if (data.success) {
+      return {
+        success: true as const,
+        rules: data.rules as ExtractRuleItem[],
+        builtinRules: data.builtinRules as BuiltinExtractRuleItem[],
+      };
+    }
+    return { success: false as const, error: data.error };
+  } catch {
+    return { success: false as const, error: 'Network error' };
+  }
+};
+
+export const createUserExtractRule = async (params: {
+  domain: string;
+  regex: string;
+  priority: number;
+  enabled: boolean;
+}) => {
+  try {
+    const response = await fetch(apiUrl('/api/user/extract-rules'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(params),
+    });
+    const data = await response.json();
+    if (data.success) return { success: true as const, rule: data.rule as ExtractRuleItem };
+    return { success: false as const, error: data.error };
+  } catch {
+    return { success: false as const, error: 'Network error' };
+  }
+};
+
+export const updateUserExtractRule = async (
+  id: number,
+  params: { domain: string; regex: string; priority: number; enabled: boolean }
+) => {
+  try {
+    const response = await fetch(apiUrl(`/api/user/extract-rules/${id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(params),
+    });
+    const data = await response.json();
+    if (data.success) return { success: true as const, rule: data.rule as ExtractRuleItem };
+    return { success: false as const, error: data.error };
+  } catch {
+    return { success: false as const, error: 'Network error' };
+  }
+};
+
+export const deleteUserExtractRule = async (id: number) => {
+  try {
+    const response = await fetch(apiUrl(`/api/user/extract-rules/${id}`), {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    const data = await response.json();
+    if (data.success) return { success: true as const };
+    return { success: false as const, error: data.error };
+  } catch {
+    return { success: false as const, error: 'Network error' };
+  }
 }; 

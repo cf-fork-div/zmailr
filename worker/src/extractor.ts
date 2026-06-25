@@ -48,18 +48,24 @@ export function getBuiltinExtractRules(): BuiltinExtractRule[] {
 
 /**
  * 从邮件正文中提取验证码
- * 优先匹配发件人域名的自定义规则，再回退通用正则
+ *
+ * 优先级（高 → 低）：
+ * 1. 用户自定义规则（mailbox.userId 对应 extract_rules.user_id）
+ * 2. 全局自定义规则（admin，extract_rules.user_id IS NULL）
+ *    同层内：发件人域名精确匹配 > 通配符 *，再按 priority 降序
+ * 3. 内置兜底规则（代码中的 matchGenericCode，只读）
  */
 export async function extractCode(
   db: D1Database,
   text: string,
   subject: string,
-  fromAddress: string
+  fromAddress: string,
+  userId?: number | null
 ): Promise<string | null> {
   const senderDomain = fromAddress.split('@')[1]?.toLowerCase() || '';
   const combined = `${subject}\n${text}`;
 
-  const rules = await getEnabledExtractRules(db, senderDomain);
+  const rules = await getEnabledExtractRules(db, senderDomain, userId);
 
   for (const rule of rules) {
     const code = matchWithRegex(combined, rule.regex);

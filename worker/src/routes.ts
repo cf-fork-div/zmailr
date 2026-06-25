@@ -19,9 +19,12 @@ import {
   createApiToken,
   deleteApiToken,
   listExtractRules,
+  listUserExtractRules,
   createExtractRule,
-  updateExtractRule,
-  deleteExtractRule,
+  updateGlobalExtractRule,
+  deleteGlobalExtractRule,
+  updateUserExtractRule,
+  deleteUserExtractRule,
   listSentEmails,
   listUserSentEmails,
   getAdminStats,
@@ -556,6 +559,59 @@ app.delete('/api/user/tokens/:id', async (c) => {
   return c.json({ success: true });
 });
 
+// ─── 用户提取规则（会话鉴权） ───────────────────────────────
+
+app.get('/api/user/extract-rules', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const rules = await listUserExtractRules(c.env.DB, user.id);
+  const builtinRules = getBuiltinExtractRules();
+  return c.json({ success: true, rules, builtinRules });
+});
+
+app.post('/api/user/extract-rules', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const body = await c.req.json();
+  if (!body.regex) {
+    return c.json({ success: false, error: '缺少 regex' }, 400);
+  }
+  const rule = await createExtractRule(c.env.DB, {
+    domain: body.domain,
+    regex: body.regex,
+    priority: body.priority,
+    enabled: body.enabled,
+    userId: user.id,
+  });
+  return c.json({ success: true, rule });
+});
+
+app.put('/api/user/extract-rules/:id', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const body = await c.req.json();
+  const rule = await updateUserExtractRule(
+    c.env.DB,
+    parseInt(c.req.param('id'), 10),
+    user.id,
+    body
+  );
+  if (!rule) return c.json({ success: false, error: '规则不存在' }, 404);
+  return c.json({ success: true, rule });
+});
+
+app.delete('/api/user/extract-rules/:id', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const ok = await deleteUserExtractRule(c.env.DB, parseInt(c.req.param('id'), 10), user.id);
+  if (!ok) return c.json({ success: false, error: '规则不存在' }, 404);
+  return c.json({ success: true });
+});
+
 app.get('/api/user/sent', async (c) => {
   const authErr = await requireUserSession(c);
   if (authErr) return authErr;
@@ -1000,7 +1056,7 @@ app.put('/admin/api/rules/:id', async (c) => {
   const authErr = await requireAdmin(c);
   if (authErr) return authErr;
   const body = await c.req.json();
-  const rule = await updateExtractRule(c.env.DB, parseInt(c.req.param('id'), 10), body);
+  const rule = await updateGlobalExtractRule(c.env.DB, parseInt(c.req.param('id'), 10), body);
   if (!rule) return c.json({ success: false, error: '规则不存在' }, 404);
   return c.json({ success: true, rule });
 });
@@ -1008,7 +1064,8 @@ app.put('/admin/api/rules/:id', async (c) => {
 app.delete('/admin/api/rules/:id', async (c) => {
   const authErr = await requireAdmin(c);
   if (authErr) return authErr;
-  await deleteExtractRule(c.env.DB, parseInt(c.req.param('id'), 10));
+  const ok = await deleteGlobalExtractRule(c.env.DB, parseInt(c.req.param('id'), 10));
+  if (!ok) return c.json({ success: false, error: '规则不存在' }, 404);
   return c.json({ success: true });
 });
 

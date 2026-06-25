@@ -78,6 +78,27 @@ Cookie: zmail_user_session=...
 
 `from` must be a valid active mailbox on your domain (owned by you, or any active mailbox on the domain).
 
+## OTP extract rules
+
+Users can manage personal extraction rules at **Dashboard → 提取规则** (`/dashboard/extract-rules`).
+
+| Endpoint | Auth | Notes |
+|----------|------|-------|
+| `GET /api/user/extract-rules` | Session | User rules + built-in rule descriptions (read-only) |
+| `POST /api/user/extract-rules` | Session | Create rule `{ domain, regex, priority, enabled }` |
+| `PUT /api/user/extract-rules/:id` | Session | Update own rule |
+| `DELETE /api/user/extract-rules/:id` | Session | Delete own rule |
+
+**Priority when extracting OTP for a mailbox:**
+
+1. User custom rules (if mailbox has `user_id`)
+2. Global admin rules (`/admin` → 提取规则, `extract_rules.user_id IS NULL`)
+3. Built-in code fallbacks (hard-coded, read-only in UI)
+
+Within each tier: sender domain exact match beats `*`, then higher `priority` wins.
+
+Admin global rules: `GET/POST/PUT/DELETE /admin/api/rules` (unchanged, global only).
+
 ## Admin user management
 
 Under `/admin` → **用户**:

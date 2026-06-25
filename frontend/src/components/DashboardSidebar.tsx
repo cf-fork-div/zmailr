@@ -63,6 +63,10 @@ const DashboardSidebar: React.FC = () => {
               <i className="fas fa-chart-bar w-4 text-center" />
               {t('dashboard.usage')}
             </NavLink>
+            <NavLink to="/dashboard/extract-rules" className={navLinkClass}>
+              <i className="fas fa-filter w-4 text-center" />
+              {t('dashboard.extractRules')}
+            </NavLink>
           </div>
         </div>
 

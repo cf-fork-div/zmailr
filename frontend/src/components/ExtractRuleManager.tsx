@@ -1,0 +1,291 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  createUserExtractRule,
+  deleteUserExtractRule,
+  ExtractRuleItem,
+  BuiltinExtractRuleItem,
+  getUserExtractRules,
+  updateUserExtractRule,
+} from '../utils/api';
+
+const emptyForm = {
+  domain: '*',
+  regex: '',
+  priority: 0,
+  enabled: true,
+};
+
+const ExtractRuleManager: React.FC = () => {
+  const { t } = useTranslation();
+  const [rules, setRules] = useState<ExtractRuleItem[]>([]);
+  const [builtinRules, setBuiltinRules] = useState<BuiltinExtractRuleItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [error, setError] = useState('');
+
+  const loadRules = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await getUserExtractRules();
+      if (result.success) {
+        setRules(result.rules);
+        setBuiltinRules(result.builtinRules);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRules();
+  }, [loadRules]);
+
+  const resetForm = () => {
+    setForm(emptyForm);
+    setEditingId(null);
+    setShowForm(false);
+    setError('');
+  };
+
+  const handleEdit = (rule: ExtractRuleItem) => {
+    setEditingId(rule.id);
+    setForm({
+      domain: rule.domain,
+      regex: rule.regex,
+      priority: rule.priority,
+      enabled: rule.enabled,
+    });
+    setShowForm(true);
+    setError('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!form.regex.trim()) {
+      setError(t('extractRules.regexRequired'));
+      return;
+    }
+
+    const payload = {
+      domain: form.domain.trim() || '*',
+      regex: form.regex.trim(),
+      priority: form.priority,
+      enabled: form.enabled,
+    };
+
+    const result = editingId
+      ? await updateUserExtractRule(editingId, payload)
+      : await createUserExtractRule(payload);
+
+    if (result.success) {
+      resetForm();
+      loadRules();
+    } else {
+      setError(result.error || t('extractRules.saveFailed'));
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm(t('extractRules.confirmDelete'))) return;
+    const result = await deleteUserExtractRule(id);
+    if (result.success) loadRules();
+  };
+
+  const handleToggleEnabled = async (rule: ExtractRuleItem) => {
+    const result = await updateUserExtractRule(rule.id, {
+      domain: rule.domain,
+      regex: rule.regex,
+      priority: rule.priority,
+      enabled: !rule.enabled,
+    });
+    if (result.success) loadRules();
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="border rounded-lg p-4 bg-card">
+        <h2 className="font-semibold mb-1">{t('extractRules.builtinTitle')}</h2>
+        <p className="text-sm text-muted-foreground mb-4">{t('extractRules.builtinDesc')}</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-muted-foreground">
+                <th className="py-2 pr-3 font-medium">{t('extractRules.colDomain')}</th>
+                <th className="py-2 pr-3 font-medium">{t('extractRules.colDescription')}</th>
+                <th className="py-2 pr-3 font-medium">{t('extractRules.colRegex')}</th>
+                <th className="py-2 pr-3 font-medium">{t('extractRules.colPriority')}</th>
+                <th className="py-2 font-medium">{t('extractRules.colStatus')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {builtinRules.map((rule) => (
+                <tr key={rule.id} className="border-b last:border-b-0">
+                  <td className="py-2 pr-3">{rule.domain}</td>
+                  <td className="py-2 pr-3 text-muted-foreground">{rule.description}</td>
+                  <td className="py-2 pr-3">
+                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded break-all">{rule.regex}</code>
+                  </td>
+                  <td className="py-2 pr-3">{rule.priority}</td>
+                  <td className="py-2">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                      {t('extractRules.builtinBadge')}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="border rounded-lg p-4 bg-card">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-semibold">{t('extractRules.customTitle')}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{t('extractRules.customDesc')}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              resetForm();
+              setShowForm(true);
+            }}
+            className="text-sm px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 shrink-0"
+          >
+            {t('extractRules.addRule')}
+          </button>
+        </div>
+
+        {showForm && (
+          <form onSubmit={handleSubmit} className="mb-4 p-3 border rounded-md space-y-3">
+            {error && <p className="text-destructive text-sm">{error}</p>}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="rule-domain" className="text-sm font-medium block mb-1">
+                  {t('extractRules.colDomain')}
+                </label>
+                <input
+                  id="rule-domain"
+                  type="text"
+                  value={form.domain}
+                  onChange={(e) => setForm((f) => ({ ...f, domain: e.target.value }))}
+                  placeholder="example.com or *"
+                  className="w-full px-3 py-2 border rounded-md bg-background text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="rule-priority" className="text-sm font-medium block mb-1">
+                  {t('extractRules.colPriority')}
+                </label>
+                <input
+                  id="rule-priority"
+                  type="number"
+                  value={form.priority}
+                  onChange={(e) => setForm((f) => ({ ...f, priority: parseInt(e.target.value, 10) || 0 }))}
+                  className="w-full px-3 py-2 border rounded-md bg-background text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="rule-regex" className="text-sm font-medium block mb-1">
+                {t('extractRules.colRegex')}
+              </label>
+              <input
+                id="rule-regex"
+                type="text"
+                value={form.regex}
+                onChange={(e) => setForm((f) => ({ ...f, regex: e.target.value }))}
+                placeholder="(?:code|验证码)[：:\s]*(\d{4,8})"
+                className="w-full px-3 py-2 border rounded-md bg-background text-sm font-mono"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.enabled}
+                onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
+              />
+              {t('extractRules.enabled')}
+            </label>
+            <div className="flex gap-2">
+              <button type="submit" className="text-sm px-3 py-1.5 bg-primary text-primary-foreground rounded-md">
+                {editingId ? t('common.save') : t('common.create')}
+              </button>
+              <button type="button" onClick={resetForm} className="text-sm px-3 py-1.5 border rounded-md">
+                {t('common.cancel')}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {loading ? (
+          <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+        ) : rules.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('extractRules.noCustomRules')}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">{t('extractRules.colDomain')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('extractRules.colRegex')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('extractRules.colPriority')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('extractRules.colStatus')}</th>
+                  <th className="py-2 font-medium">{t('extractRules.colActions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.map((rule) => (
+                  <tr key={rule.id} className="border-b last:border-b-0">
+                    <td className="py-2 pr-3">{rule.domain}</td>
+                    <td className="py-2 pr-3">
+                      <code className="text-xs bg-muted px-1.5 py-0.5 rounded break-all">{rule.regex}</code>
+                    </td>
+                    <td className="py-2 pr-3">{rule.priority}</td>
+                    <td className="py-2 pr-3">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleEnabled(rule)}
+                        className={`text-xs px-2 py-0.5 rounded-full ${
+                          rule.enabled
+                            ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                            : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        {rule.enabled ? t('extractRules.statusEnabled') : t('extractRules.statusDisabled')}
+                      </button>
+                    </td>
+                    <td className="py-2">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(rule)}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          {t('extractRules.edit')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(rule.id)}
+                          className="text-xs text-destructive hover:underline"
+                        >
+                          {t('common.delete')}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ExtractRuleManager;

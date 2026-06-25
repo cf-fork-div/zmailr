@@ -80,6 +80,7 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
 
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_api_tokens_token ON api_tokens(token);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_extract_rules_domain ON extract_rules(domain);`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_extract_rules_user_id ON extract_rules(user_id);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_emails_extracted_code ON emails(extracted_code);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_emails_created_at ON sent_emails(created_at);`);
 
@@ -91,6 +92,7 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     await migrateAddColumn(db, 'sent_emails', 'token_id', 'INTEGER');
     await migrateAddColumn(db, 'mailboxes', 'user_id', 'INTEGER');
     await migrateAddColumn(db, 'emails', 'raw_content', 'TEXT');
+    await migrateAddColumn(db, 'extract_rules', 'user_id', 'INTEGER');
     await db.exec(`CREATE TABLE IF NOT EXISTS api_rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 0, window_start INTEGER NOT NULL);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_user_tokens_hash ON user_tokens(token_hash);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_mailboxes_user_id ON mailboxes(user_id);`);
@@ -182,7 +184,7 @@ export async function createMailbox(db: D1Database, params: CreateMailboxParams)
  */
 export async function getMailbox(db: D1Database, address: string): Promise<Mailbox | null> {
   const now = getCurrentTimestamp();
-  const result = await db.prepare(`SELECT id, address, created_at, expires_at, ip_address, last_accessed FROM mailboxes WHERE address = ? AND expires_at > ?`).bind(address, now).first();
+  const result = await db.prepare(`SELECT id, address, created_at, expires_at, ip_address, last_accessed, user_id FROM mailboxes WHERE address = ? AND expires_at > ?`).bind(address, now).first();
   
   if (!result) return null;
   
@@ -196,6 +198,7 @@ export async function getMailbox(db: D1Database, address: string): Promise<Mailb
     expiresAt: result.expires_at as number,
     ipAddress: result.ip_address as string,
     lastAccessed: now,
+    userId: (result.user_id as number | null) ?? null,
   };
 }
 
@@ -720,60 +723,102 @@ export async function deleteApiToken(db: D1Database, id: number): Promise<void> 
 
 // ─── Extract Rules ───────────────────────────────────────────
 
-export async function listExtractRules(db: D1Database): Promise<ExtractRule[]> {
-  const results = await db.prepare(
-    `SELECT id, domain, regex, priority, enabled, created_at FROM extract_rules ORDER BY priority DESC, id ASC`
-  ).all();
-  if (!results.results) return [];
-  return results.results.map(row => ({
+function mapExtractRuleRow(row: Record<string, unknown>): ExtractRule {
+  return {
     id: row.id as number,
     domain: row.domain as string,
     regex: row.regex as string,
     priority: row.priority as number,
     enabled: !!row.enabled,
     createdAt: row.created_at as number,
-  }));
+    userId: (row.user_id as number | null) ?? null,
+  };
 }
 
-export async function getEnabledExtractRules(db: D1Database, senderDomain: string): Promise<ExtractRule[]> {
+export async function listExtractRules(db: D1Database): Promise<ExtractRule[]> {
   const results = await db.prepare(
-    `SELECT id, domain, regex, priority, enabled, created_at FROM extract_rules
-     WHERE enabled = 1 AND (domain = ? OR domain = '*')
-     ORDER BY CASE WHEN domain = '*' THEN 0 ELSE 1 END DESC, priority DESC, id ASC`
-  ).bind(senderDomain).all();
+    `SELECT id, domain, regex, priority, enabled, created_at, user_id FROM extract_rules
+     WHERE user_id IS NULL
+     ORDER BY priority DESC, id ASC`
+  ).all();
   if (!results.results) return [];
-  return results.results.map(row => ({
-    id: row.id as number,
-    domain: row.domain as string,
-    regex: row.regex as string,
-    priority: row.priority as number,
-    enabled: !!row.enabled,
-    createdAt: row.created_at as number,
-  }));
+  return results.results.map((row) => mapExtractRuleRow(row as Record<string, unknown>));
+}
+
+export async function listUserExtractRules(db: D1Database, userId: number): Promise<ExtractRule[]> {
+  const results = await db.prepare(
+    `SELECT id, domain, regex, priority, enabled, created_at, user_id FROM extract_rules
+     WHERE user_id = ?
+     ORDER BY priority DESC, id ASC`
+  ).bind(userId).all();
+  if (!results.results) return [];
+  return results.results.map((row) => mapExtractRuleRow(row as Record<string, unknown>));
+}
+
+function sortExtractRulesForDomain(rules: ExtractRule[], senderDomain: string): ExtractRule[] {
+  return [...rules].sort((a, b) => {
+    const aSpecific = a.domain !== '*' && a.domain === senderDomain ? 1 : 0;
+    const bSpecific = b.domain !== '*' && b.domain === senderDomain ? 1 : 0;
+    if (bSpecific !== aSpecific) return bSpecific - aSpecific;
+    const aScope = a.userId != null ? 1 : 0;
+    const bScope = b.userId != null ? 1 : 0;
+    if (bScope !== aScope) return bScope - aScope;
+    if (b.priority !== a.priority) return b.priority - a.priority;
+    return a.id - b.id;
+  });
+}
+
+export async function getEnabledExtractRules(
+  db: D1Database,
+  senderDomain: string,
+  userId?: number | null
+): Promise<ExtractRule[]> {
+  const globalResults = await db.prepare(
+    `SELECT id, domain, regex, priority, enabled, created_at, user_id FROM extract_rules
+     WHERE enabled = 1 AND user_id IS NULL AND (domain = ? OR domain = '*')`
+  ).bind(senderDomain).all();
+
+  let userRules: ExtractRule[] = [];
+  if (userId != null) {
+    const userResults = await db.prepare(
+      `SELECT id, domain, regex, priority, enabled, created_at, user_id FROM extract_rules
+       WHERE enabled = 1 AND user_id = ? AND (domain = ? OR domain = '*')`
+    ).bind(userId, senderDomain).all();
+    if (userResults.results) {
+      userRules = userResults.results.map((row) => mapExtractRuleRow(row as Record<string, unknown>));
+    }
+  }
+
+  const globalRules = globalResults.results
+    ? globalResults.results.map((row) => mapExtractRuleRow(row as Record<string, unknown>))
+    : [];
+
+  return sortExtractRulesForDomain([...userRules, ...globalRules], senderDomain);
+}
+
+export async function getExtractRuleById(db: D1Database, id: number): Promise<ExtractRule | null> {
+  const result = await db.prepare(
+    `SELECT id, domain, regex, priority, enabled, created_at, user_id FROM extract_rules WHERE id = ?`
+  ).bind(id).first();
+  return result ? mapExtractRuleRow(result as Record<string, unknown>) : null;
 }
 
 export async function createExtractRule(db: D1Database, params: SaveExtractRuleParams): Promise<ExtractRule> {
   const result = await db.prepare(
-    `INSERT INTO extract_rules (domain, regex, priority, enabled) VALUES (?, ?, ?, ?)
-     RETURNING id, domain, regex, priority, enabled, created_at`
+    `INSERT INTO extract_rules (domain, regex, priority, enabled, user_id) VALUES (?, ?, ?, ?, ?)
+     RETURNING id, domain, regex, priority, enabled, created_at, user_id`
   ).bind(
     params.domain || '*',
     params.regex,
     params.priority ?? 0,
-    params.enabled !== false ? 1 : 0
+    params.enabled !== false ? 1 : 0,
+    params.userId ?? null
   ).first();
-  return {
-    id: result!.id as number,
-    domain: result!.domain as string,
-    regex: result!.regex as string,
-    priority: result!.priority as number,
-    enabled: !!result!.enabled,
-    createdAt: result!.created_at as number,
-  };
+  return mapExtractRuleRow(result as Record<string, unknown>);
 }
 
 export async function updateExtractRule(db: D1Database, id: number, params: SaveExtractRuleParams): Promise<ExtractRule | null> {
-  const existing = await db.prepare(`SELECT id FROM extract_rules WHERE id = ?`).bind(id).first();
+  const existing = await getExtractRuleById(db, id);
   if (!existing) return null;
   await db.prepare(
     `UPDATE extract_rules SET domain = ?, regex = ?, priority = ?, enabled = ? WHERE id = ?`
@@ -784,22 +829,46 @@ export async function updateExtractRule(db: D1Database, id: number, params: Save
     params.enabled !== false ? 1 : 0,
     id
   ).run();
-  const result = await db.prepare(
-    `SELECT id, domain, regex, priority, enabled, created_at FROM extract_rules WHERE id = ?`
-  ).bind(id).first();
-  if (!result) return null;
-  return {
-    id: result.id as number,
-    domain: result.domain as string,
-    regex: result.regex as string,
-    priority: result.priority as number,
-    enabled: !!result.enabled,
-    createdAt: result.created_at as number,
-  };
+  return getExtractRuleById(db, id);
+}
+
+export async function updateUserExtractRule(
+  db: D1Database,
+  id: number,
+  userId: number,
+  params: SaveExtractRuleParams
+): Promise<ExtractRule | null> {
+  const existing = await getExtractRuleById(db, id);
+  if (!existing || existing.userId !== userId) return null;
+  return updateExtractRule(db, id, params);
+}
+
+export async function updateGlobalExtractRule(
+  db: D1Database,
+  id: number,
+  params: SaveExtractRuleParams
+): Promise<ExtractRule | null> {
+  const existing = await getExtractRuleById(db, id);
+  if (!existing || existing.userId != null) return null;
+  return updateExtractRule(db, id, params);
 }
 
 export async function deleteExtractRule(db: D1Database, id: number): Promise<void> {
   await db.prepare(`DELETE FROM extract_rules WHERE id = ?`).bind(id).run();
+}
+
+export async function deleteUserExtractRule(db: D1Database, id: number, userId: number): Promise<boolean> {
+  const existing = await getExtractRuleById(db, id);
+  if (!existing || existing.userId !== userId) return false;
+  await deleteExtractRule(db, id);
+  return true;
+}
+
+export async function deleteGlobalExtractRule(db: D1Database, id: number): Promise<boolean> {
+  const existing = await getExtractRuleById(db, id);
+  if (!existing || existing.userId != null) return false;
+  await deleteExtractRule(db, id);
+  return true;
 }
 
 // ─── Sent Emails ─────────────────────────────────────────────

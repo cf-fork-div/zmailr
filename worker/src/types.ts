@@ -81,6 +81,7 @@ export interface Mailbox {
   expiresAt: number;
   ipAddress: string;
   lastAccessed: number;
+  userId?: number | null;
 }
 
 // 创建邮箱参数
@@ -136,7 +137,7 @@ export interface CreateApiTokenParams {
   expiresInDays: number;
 }
 
-// 验证码提取规则
+// 验证码提取规则（userId 为 null 表示全局/admin 规则）
 export interface ExtractRule {
   id: number;
   domain: string;
@@ -144,6 +145,7 @@ export interface ExtractRule {
   priority: number;
   enabled: boolean;
   createdAt: number;
+  userId?: number | null;
 }
 
 export interface SaveExtractRuleParams {
@@ -151,6 +153,7 @@ export interface SaveExtractRuleParams {
   regex: string;
   priority?: number;
   enabled?: boolean;
+  userId?: number | null;
 }
 
 // 发信审计

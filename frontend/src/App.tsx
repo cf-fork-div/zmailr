@@ -7,6 +7,7 @@ import InboxPage from './pages/InboxPage';
 import OutboxPage from './pages/OutboxPage';
 import ApiKeysPage from './pages/ApiKeysPage';
 import UsagePage from './pages/UsagePage';
+import ExtractRulesPage from './pages/ExtractRulesPage';
 import { MailboxProvider } from './contexts/MailboxContext';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -39,6 +40,7 @@ const App: React.FC = () => {
               <Route path="dashboard/outbox" element={<OutboxPage />} />
               <Route path="dashboard/api-keys" element={<ApiKeysPage />} />
               <Route path="dashboard/usage" element={<UsagePage />} />
+              <Route path="dashboard/extract-rules" element={<ExtractRulesPage />} />
             </Route>
 
             <Route path="*" element={<NotFoundPage />} />

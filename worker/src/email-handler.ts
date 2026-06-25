@@ -41,7 +41,8 @@ export async function handleEmail(message: any, env: Env): Promise<void> {
       env.DB,
       bodyText,
       email.subject || '',
-      email.from.address
+      email.from.address,
+      mailbox.userId
     );
 
     if (extractedCode) {
