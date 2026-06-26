@@ -94,3 +94,6 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/ 
+# Local secrets (do not commit)
+.cursor/mcp.json
+guest_cookies.txt
