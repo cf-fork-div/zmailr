@@ -6,7 +6,8 @@ export default defineConfig({
   description: '开源、可自托管的 24 小时临时邮箱与 OTP 自动化平台',
   base: '/docs/',
   outDir: '../frontend/public/docs',
-  cleanUrls: false,
+  // Match Cloudflare Workers html_handling (drops .html); false breaks VitePress client hydration/search
+  cleanUrls: true,
   // README.md is the doc hub; map it to index so /docs/ gets index.html + correct client route
   rewrites: {
     'README.md': 'index.md',

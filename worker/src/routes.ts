@@ -1307,7 +1307,17 @@ app.all('*', async (c) => {
     return c.redirect(url.toString(), 301);
   }
 
-  return c.env.ASSETS.fetch(c.req.raw);
+  const assetResponse = await c.env.ASSETS.fetch(c.req.raw);
+
+  // SPA fallback must not serve React index.html for missing VitePress chunks (breaks search/UI)
+  if (
+    pathname.startsWith('/docs/assets/') &&
+    assetResponse.headers.get('Content-Type')?.includes('text/html')
+  ) {
+    return c.notFound();
+  }
+
+  return assetResponse;
 });
 
 export default app;
