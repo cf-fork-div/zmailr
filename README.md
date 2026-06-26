@@ -39,11 +39,11 @@
 ### Web 端
 
 - **登录与会话**：用户名密码登录，受保护的路由与登出
-- **仪表板**：API Token 状态、收件/发件用量、今日发信配额
+- **仪表板**：API Token 状态与提醒（无 Token / 即将过期横幅）、收件/发件用量、今日发信配额
 - **收件箱 / 发件箱**：新建 24 小时临时地址、收信列表、OTP 高亮（OtpBox）、Brevo 出站撰写与发信记录
 - **邮箱历史**：已过期/历史邮箱列表，支持批量删除
 - **邮件批量删除**：收件箱与发件箱多选删除
-- **API 密钥**：每位用户 1 个 Bearer Token，可选 `lease` / `mail` / `send` scope，含 curl 示例
+- **API 密钥**：每位用户 1 个 Bearer Token，可选 `lease` / `mail` / `send` scope，含 curl 示例；明文仅创建时展示一次，浏览器可本地保存脱敏预览
 - **API 调试**：浏览器内调用 Bearer API，查看 JSON 响应与 `x-ratelimit-*` 头
 - **提取规则**：系统内置（只读）+ 用户自定义（按发件人域名优先级匹配），支持备注字段
 - **系统公告**：登录后未读公告弹窗，逐条确认或全部标记已读
@@ -56,9 +56,9 @@
 - **`GET /api/mail`**：拉取邮件与 OTP 提取结果
 - **`POST /api/send`**：Brevo 出站发信
 - **`GET /api/user/quota`**：配额与用量查询
-- **OpenAPI**：[`/openapi.json`](https://zmailr.itool.eu.cc/openapi.json) 机器可读规范
-- **MCP**：[`@zmailr/mcp`](packages/mcp) npm 包（Cursor / Claude Desktop）
-- **Bearer Token 认证**（`Authorization: Bearer <token>`）
+- **OpenAPI**：[`/openapi.json`](https://zmailr.itool.eu.cc/openapi.json) 机器可读规范（`pnpm run build` 生成 `frontend/public/openapi.json`）
+- **MCP**：[`@zmailr/mcp`](packages/mcp) npm 包（Cursor / Claude Desktop），详见 [docs/mcp.md](docs/mcp.md)
+- **Bearer Token 认证**（`Authorization: Bearer <token>`）；**不支持匿名 API**
 - **速率限制响应头**：`x-ratelimit-limit` / `remaining` / `reset`
 
 完整 API 列表与限流说明见部署后的 [`/api-docs`](https://zmailr.itool.eu.cc/api-docs)（含 [`/openapi.json`](https://zmailr.itool.eu.cc/openapi.json) OpenAPI 规范）或 [user-auth.md](docs/user-auth.md)。
@@ -87,6 +87,7 @@
 
 - **GitHub Actions**：推送 `main` 自动构建并部署至 Cloudflare Workers
 - **Cloudflare D1**：用户、邮箱、邮件、规则、审计等持久化
+- **R2 附件**：入站附件存 `zmailr-attachments` bucket（`ATTACHMENTS` 绑定）；D1 存元数据，历史 D1 附件可回退读取
 - **Brevo 出站**：Transactional API 发信，SPF/DKIM/DMARC 见 [brevo-setup.md](docs/brevo-setup.md)
 
 ---
@@ -201,7 +202,7 @@
 
 1. 访问演示站或自托管实例，使用账号登录（演示：`guest` / `guest`）。
 2. 若有未读**系统公告**，在弹窗中阅读并标记已读。
-3. 在 **仪表板** 查看配额；若无 API Token，在 **API 密钥** 创建（明文仅显示一次）。
+3. 在 **仪表板** 查看配额；若无 API Token，按横幅提醒在 **API 密钥** 创建（明文仅显示一次）。
 4. 在 **收件箱** 点击「新建收件箱」生成临时地址；可配合 `POST /api/send` 或外部发信测试收信。
 5. 在 **发件箱** 发送测试邮件（需配置 Brevo，见 [brevo-setup.md](docs/brevo-setup.md)）。
 6. 在 **提取规则** 按发件人域名添加 OTP 正则；未匹配时回退到内置规则。
@@ -223,7 +224,8 @@
 | [docs/deploy.md](docs/deploy.md) | **部署指南**（D1、GitHub Secrets、Email Routing、本地开发） |
 | [docs/admin-guide.md](docs/admin-guide.md) | 管理后台（`ADMIN_PATH`、用户、维护模式、审计日志） |
 | [docs/brevo-setup.md](docs/brevo-setup.md) | Brevo 出站发信与 DNS（SPF/DKIM/DMARC） |
-| [docs/user-auth.md](docs/user-auth.md) | 用户认证、API Token scope、per-user 速率限制 |
+| [docs/user-auth.md](docs/user-auth.md) | 用户认证、API Token scope、per-user 速率限制、OpenAPI |
+| [docs/mcp.md](docs/mcp.md) | **MCP 集成**（`@zmailr/mcp`、Cursor 配置） |
 | [docs/testing.md](docs/testing.md) | **生产 E2E 测试报告**（Pass/Fail 与截图索引） |
 | [docs/mailsink-comparison.md](docs/mailsink-comparison.md) | 与 MailSink 功能对照与端点映射 |
 | [README.en.md](README.en.md) | English README |

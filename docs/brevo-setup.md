@@ -172,7 +172,7 @@ Invoke-RestMethod -Uri "https://api.brevo.com/v3/smtp/email" -Method Post -Heade
 
 ### 通过 zMailR `/api/send` 测试
 
-先在管理后台（`https://你的域名/{ADMIN_PATH}`）创建 API Token，然后：
+先在 Dashboard → **API 密钥**（`/dashboard/api-keys`）创建含 `send` scope 的 Bearer Token，然后：
 
 ```bash
 curl -X POST "https://你的域名/api/send" \

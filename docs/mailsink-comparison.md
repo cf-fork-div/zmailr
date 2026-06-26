@@ -191,4 +191,5 @@ POST /api/send            （可选）以租用的地址发信
 - [部署指南](./deploy.md)
 - [Brevo 发信配置](./brevo-setup.md)
 - [用户认证与 Token](./user-auth.md)
+- [MCP 集成](./mcp.md)
 - [项目 README](../README.md)

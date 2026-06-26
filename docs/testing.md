@@ -18,6 +18,7 @@
 | 8 | 用户端 · API 调试 GET /api/user/quota | Pass | [api-debug-response.png](./screenshots/api-debug-response.png) |
 | 9 | 用户端 · 邮箱历史列表 | Pass | [inbox.png](./screenshots/inbox.png)（历史列表可见，可切换地址） |
 | 10 | 管理后台 · 系统设置 UI（未启用维护模式） | Pass | [admin-settings.png](./screenshots/admin-settings.png) |
+| 11 | OpenAPI · `GET /openapi.json` 可访问 | Pass | 构建产物同步至 `frontend/public/openapi.json`；`/api-docs` 含链接 |
 
 ## API 脚本验证
 
@@ -60,3 +61,10 @@ docs/screenshots/outbox.png
 ```
 
 （另有历史管理后台截图：`admin-login.png`、`admin-dashboard.png`、`admin-users.png`、`admin-rules.png`、`admin-ratelimit.png`、`admin-audit.png` 等，见 [README](../README.md)。）
+
+## 相关文档
+
+- [部署指南](./deploy.md)
+- [用户认证与 API Token](./user-auth.md)
+- [MCP 集成](./mcp.md)
+- [项目 README](../README.md)

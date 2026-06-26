@@ -1,4 +1,4 @@
-# <div align="center">🚀 zMailR - 24-hour Temporary Email Service</div>
+# <div align="center">zMailR</div>
 
 <div align="center">
   <p>
@@ -7,45 +7,91 @@
 
   <p><em>Web UI is Chinese (zh-CN) only.</em></p>
 
-  <p><strong>Enhanced fork of <a href="https://github.com/zaunist/zmail">zaunist/zmail</a></strong> (MIT License)</p>
-
   <p>
-    <a href="https://zmailr.itool.eu.cc/" target="_blank"><strong>🌐 Live Demo</strong></a>
+    <a href="https://zmailr.itool.eu.cc/" target="_blank"><strong>Live Demo</strong></a>
+    ·
+    <a href="docs/deploy.md"><strong>Deployment Guide</strong></a>
   </p>
 </div>
 
 ---
 
-## Deployment
+## One-liner
 
-See **[docs/deploy.md](docs/deploy.md)** for full deployment steps (D1, GitHub Secrets, Email Routing, local dev).
+**Open-source, self-hostable 24-hour temporary email and OTP automation — web console plus Bearer API for scripts and CI.**
 
-### 📧 Configure Email Routing
+**Stack**: Cloudflare Workers, D1, R2 (attachments), Email Routing (inbound), Brevo (outbound), React + Vite.
 
-<div style="background-color: #2d2d2d; color: #ffffff; padding: 15px; border-radius: 5px; margin: 15px 0;">
-  <ol>
-    <li>Find your domain in the Cloudflare dashboard</li>
-    <li>Go to "Email" → "Email Routing"</li>
-    <li>Enable Email Routing</li>
-    <li>Add a routing rule:
-      <ul>
-        <li>Match type: "Catch-all address"</li>
-        <li>Action: "Send to a Worker"</li>
-        <li>Select your deployed Worker</li>
-      </ul>
-    </li>
-    <li>Repeat for each domain if you have multiple</li>
-  </ol>
-</div>
-
-### 📚 Related docs
-
-- **Outbound mail**: [docs/brevo-setup.md](docs/brevo-setup.md) (Brevo signup, SPF/DKIM/DMARC, API key, GitHub Secret, testing)
-- **Admin console** (Chinese): [docs/admin-guide.md](docs/admin-guide.md) — secret `ADMIN_PATH` URL, maintenance mode, rate limits, audit logs
-- **Programmatic API**: After deploy, create a user API token at **Dashboard → API 密钥** (`/dashboard/api-keys`). Endpoints: `/api/lease`, `/api/mail`, `/api/send` — all require `Authorization: Bearer <token>`
+**Demo**: [zmailr.itool.eu.cc](https://zmailr.itool.eu.cc/) · `guest` / `guest`
 
 ---
 
-## 📄 License
+## Features
+
+### Web
+
+- Login/session, dashboard with usage and **API Token reminders** (missing token / expiring within 7 days)
+- Inbox/outbox, OTP highlight, mailbox history, bulk delete
+- API keys (1 Bearer token per user, `lease` / `mail` / `send` scopes)
+- API debug page, extract rules, announcements, dark/light theme
+
+### Programmatic API
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/lease` | Lease temporary mailbox |
+| `GET /api/mail` | Long-poll mail / OTP |
+| `POST /api/send` | Outbound send (Brevo) |
+| `GET /api/user/quota` | Daily send quota |
+
+- **Auth required** — no anonymous API; use Dashboard session or `Authorization: Bearer <token>`
+- **OpenAPI**: [`/openapi.json`](https://zmailr.itool.eu.cc/openapi.json) (generated at build → `frontend/public/openapi.json`)
+- **Human docs**: [`/api-docs`](https://zmailr.itool.eu.cc/api-docs)
+- **MCP**: [`@zmailr/mcp`](packages/mcp) — see [docs/mcp.md](docs/mcp.md)
+- Rate limit headers: `x-ratelimit-limit` / `remaining` / `reset`
+
+See [docs/user-auth.md](docs/user-auth.md) for scopes, per-user rate plans (Free / Pro / Team), and token UX.
+
+### Admin console
+
+Secret URL `https://your-domain/{ADMIN_PATH}` with `ADMIN_PASSWORD`. See [docs/admin-guide.md](docs/admin-guide.md):
+
+- Users, rate plans, announcements, extract rules
+- Rate-limit monitoring (429 hits), maintenance mode, audit logs, Brevo stats
+
+### Infrastructure
+
+- GitHub Actions deploy on `main`
+- D1 persistence; **R2** `zmailr-attachments` for inbound attachment bytes (D1 metadata + legacy fallback)
+- Brevo outbound — [docs/brevo-setup.md](docs/brevo-setup.md)
+
+---
+
+## Quick start (self-host)
+
+1. Fork and configure GitHub Secrets — [docs/deploy.md](docs/deploy.md)
+2. Enable Email Routing catch-all → Worker
+3. Create R2 bucket `zmailr-attachments` (no bucket ID in secrets; `wrangler.toml` uses `bucket_name` only)
+4. Log in, create Bearer token at **Dashboard → API 密钥**
+5. Verify: `python scripts/verify_api.py --base-url https://your-domain --token <token>`
+
+---
+
+## Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [docs/deploy.md](docs/deploy.md) | Deployment (D1, Secrets, R2, Email Routing) |
+| [docs/admin-guide.md](docs/admin-guide.md) | Admin console |
+| [docs/user-auth.md](docs/user-auth.md) | Auth, API tokens, rate limits, OpenAPI |
+| [docs/mcp.md](docs/mcp.md) | MCP integration (`@zmailr/mcp`) |
+| [docs/brevo-setup.md](docs/brevo-setup.md) | Brevo + DNS |
+| [docs/mailsink-comparison.md](docs/mailsink-comparison.md) | vs MailSink |
+| [docs/testing.md](docs/testing.md) | Production E2E report |
+| [README.md](README.md) | Full Chinese README with screenshots |
+
+---
+
+## License
 
 [MIT License](./LICENSE)
