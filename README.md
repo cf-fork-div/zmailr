@@ -8,7 +8,6 @@
     <a href="https://zmailr.itool.eu.cc/"><img src="https://img.shields.io/badge/demo-zmailr.itool.eu.cc-blue" alt="Live Demo"></a>
   </p>
 
-  <p><strong>Enhanced fork of <a href="https://github.com/zaunist/zmail">zaunist/zmail</a></strong>（MIT License）</p>
 
   <p>
     <a href="https://zmailr.itool.eu.cc/" target="_blank"><strong>在线体验</strong></a>
