@@ -114,6 +114,7 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     // Phase 2: add columns to existing tables (must run before indexes on those columns)
     await migrateAddColumn(db, 'emails', 'extracted_code', 'TEXT');
     await migrateAddColumn(db, 'emails', 'raw_content', 'TEXT');
+    await migrateAddColumn(db, 'emails', 'matched_rule_id', 'INTEGER');
     await migrateAddColumn(db, 'mailboxes', 'last_api_mail_email_id', 'TEXT');
     await migrateAddColumn(db, 'mailboxes', 'last_api_mail_received_at', 'INTEGER');
     await migrateAddColumn(db, 'mailboxes', 'user_id', 'INTEGER');
@@ -540,12 +541,13 @@ export async function saveEmail(db: D1Database, params: SaveEmailParams): Promis
       hasAttachments: params.hasAttachments || false,
       isRead: false,
       extractedCode: params.extractedCode ?? null,
+      matchedRuleId: params.matchedRuleId ?? null,
       rawContent: params.rawContent ?? null,
     };
     
     console.log('准备插入邮件:', email.id);
     
-    await db.prepare(`INSERT INTO emails (id, mailbox_id, from_address, from_name, to_address, subject, text_content, html_content, received_at, has_attachments, is_read, extracted_code, raw_content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(email.id, email.mailboxId, email.fromAddress, email.fromName, email.toAddress, email.subject, email.textContent, email.htmlContent, email.receivedAt, email.hasAttachments ? 1 : 0, email.isRead ? 1 : 0, email.extractedCode, email.rawContent).run();
+    await db.prepare(`INSERT INTO emails (id, mailbox_id, from_address, from_name, to_address, subject, text_content, html_content, received_at, has_attachments, is_read, extracted_code, raw_content, matched_rule_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(email.id, email.mailboxId, email.fromAddress, email.fromName, email.toAddress, email.subject, email.textContent, email.htmlContent, email.receivedAt, email.hasAttachments ? 1 : 0, email.isRead ? 1 : 0, email.extractedCode, email.rawContent, email.matchedRuleId).run();
     
     console.log('邮件保存成功:', email.id);
     
@@ -669,18 +671,8 @@ export async function saveAttachment(
   }
 }
 
-/**
- * 获取邮件列表
- * @param db 数据库实例
- * @param mailboxId 邮箱ID
- * @returns 邮件列表
- */
-export async function getEmails(db: D1Database, mailboxId: string): Promise<EmailListItem[]> {
-  const results = await db.prepare(`SELECT id, mailbox_id, from_address, from_name, to_address, subject, received_at, has_attachments, is_read, extracted_code FROM emails WHERE mailbox_id = ? ORDER BY received_at DESC`).bind(mailboxId).all();
-  
-  if (!results.results) return [];
-  
-  return results.results.map(result => ({
+function mapEmailListItem(result: Record<string, unknown>): EmailListItem {
+  return {
     id: result.id as string,
     mailboxId: result.mailbox_id as string,
     fromAddress: result.from_address as string,
@@ -691,7 +683,32 @@ export async function getEmails(db: D1Database, mailboxId: string): Promise<Emai
     hasAttachments: !!result.has_attachments,
     isRead: !!result.is_read,
     extractedCode: (result.extracted_code as string | null) ?? null,
-  }));
+    matchedRuleId: (result.matched_rule_id as number | null) ?? null,
+    matchedRuleDomain: (result.matched_rule_domain as string | null) ?? null,
+    matchedRuleRemark: (result.matched_rule_remark as string | null) ?? null,
+  };
+}
+
+/**
+ * 获取邮件列表
+ * @param db 数据库实例
+ * @param mailboxId 邮箱ID
+ * @returns 邮件列表
+ */
+export async function getEmails(db: D1Database, mailboxId: string): Promise<EmailListItem[]> {
+  const results = await db.prepare(
+    `SELECT e.id, e.mailbox_id, e.from_address, e.from_name, e.to_address, e.subject,
+            e.received_at, e.has_attachments, e.is_read, e.extracted_code, e.matched_rule_id,
+            er.domain AS matched_rule_domain, er.remark AS matched_rule_remark
+     FROM emails e
+     LEFT JOIN extract_rules er ON e.matched_rule_id = er.id
+     WHERE e.mailbox_id = ?
+     ORDER BY e.received_at DESC`
+  ).bind(mailboxId).all();
+  
+  if (!results.results) return [];
+  
+  return results.results.map((result) => mapEmailListItem(result as Record<string, unknown>));
 }
 
 /**
@@ -701,7 +718,15 @@ export async function getEmails(db: D1Database, mailboxId: string): Promise<Emai
  * @returns 邮件详情
  */
 export async function getEmail(db: D1Database, id: string): Promise<Email | null> {
-  const result = await db.prepare(`SELECT id, mailbox_id, from_address, from_name, to_address, subject, text_content, html_content, received_at, has_attachments, is_read, extracted_code, raw_content FROM emails WHERE id = ?`).bind(id).first();
+  const result = await db.prepare(
+    `SELECT e.id, e.mailbox_id, e.from_address, e.from_name, e.to_address, e.subject,
+            e.text_content, e.html_content, e.received_at, e.has_attachments, e.is_read,
+            e.extracted_code, e.raw_content, e.matched_rule_id,
+            er.domain AS matched_rule_domain, er.remark AS matched_rule_remark
+     FROM emails e
+     LEFT JOIN extract_rules er ON e.matched_rule_id = er.id
+     WHERE e.id = ?`
+  ).bind(id).first();
   
   if (!result) return null;
   
@@ -721,6 +746,9 @@ export async function getEmail(db: D1Database, id: string): Promise<Email | null
     hasAttachments: !!result.has_attachments,
     isRead: true,
     extractedCode: (result.extracted_code as string | null) ?? null,
+    matchedRuleId: (result.matched_rule_id as number | null) ?? null,
+    matchedRuleDomain: (result.matched_rule_domain as string | null) ?? null,
+    matchedRuleRemark: (result.matched_rule_remark as string | null) ?? null,
     rawContent: (result.raw_content as string | null) ?? null,
   };
 }
@@ -1034,7 +1062,7 @@ export async function listAllUserExtractRules(db: D1Database): Promise<UserExtra
   return results.results.map((row) => mapUserExtractRuleRow(row as Record<string, unknown>));
 }
 
-function sortExtractRulesForDomain(rules: ExtractRule[], senderDomain: string): ExtractRule[] {
+export function sortExtractRulesForDomain(rules: ExtractRule[], senderDomain: string): ExtractRule[] {
   return [...rules].sort((a, b) => {
     const aSpecific = a.domain !== '*' && a.domain === senderDomain ? 1 : 0;
     const bSpecific = b.domain !== '*' && b.domain === senderDomain ? 1 : 0;

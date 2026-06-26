@@ -129,6 +129,21 @@ td code{font-size:.75rem;background:#0f172a;padding:2px 6px;border-radius:4px;wo
     <table><thead><tr><th>ID</th><th>标题</th><th>创建时间</th><th>状态</th><th>已读人数</th><th>操作</th></tr></thead><tbody id="announcementsBody"></tbody></table>
   </div>
   <div id="panel-rules" class="panel">
+    <h3 class="section-title">用样例邮件试跑</h3>
+    <p class="section-desc">按当前启用规则顺序试匹配，便于调试正则与优先级</p>
+    <div class="card" style="margin-bottom:24px">
+      <div class="grid-2">
+        <div class="form-group"><label>发件人</label><input id="testRunFrom" placeholder="noreply@npmjs.com"></div>
+        <div class="form-group"><label>主题</label><input id="testRunSubject" placeholder="Your npm OTP"></div>
+      </div>
+      <div class="form-group"><label>正文</label><textarea id="testRunText" class="content-area" placeholder="The OTP code is: 123456"></textarea></div>
+      <div class="form-group"><label>用户 ID（可选，模拟该用户的个人规则）</label><input id="testRunUserId" type="number" placeholder="留空则仅全局规则"></div>
+      <div class="toolbar" style="margin-bottom:0">
+        <button class="btn" onclick="runExtractTest()">试跑</button>
+        <span id="testRunSummary" class="hint"></span>
+      </div>
+      <table style="margin-top:16px"><thead><tr><th>顺序</th><th>ID</th><th>域名</th><th>优先级</th><th>正则</th><th>匹配</th><th>提取结果</th><th>备注</th></tr></thead><tbody id="testRunBody"><tr><td colspan="8" class="empty">填写样例邮件后点击试跑</td></tr></tbody></table>
+    </div>
     <h3 class="section-title">系统内置规则</h3>
     <p class="section-desc">系统级规则，对所有用户生效；可新增、编辑、删除</p>
     <div class="toolbar">
@@ -305,6 +320,7 @@ function editRule(id){const r=(window._rules||[]).find(x=>x.id===id);if(!r)retur
 async function saveRule(){const id=document.getElementById('ruleId').value;const remark=document.getElementById('ruleRemark').value.trim();const body={domain:document.getElementById('ruleDomain').value,regex:document.getElementById('ruleRegex').value,priority:parseInt(document.getElementById('rulePriority').value)||0,enabled:document.getElementById('ruleEnabled').value==='1',remark:remark||null};if(id){await api('/rules/'+id,{method:'PUT',body:JSON.stringify(body)})}else{await api('/rules',{method:'POST',body:JSON.stringify(body)})}hideModal('ruleModal');loadRules()}
 async function deleteRule(id){if(!confirm('确定删除此规则？'))return;await api('/rules/'+id,{method:'DELETE'});loadRules()}
 async function deleteUserRule(id){if(!confirm('确定删除此用户规则？'))return;await api('/rules/user/'+id,{method:'DELETE'});loadRules()}
+async function runExtractTest(){const fromAddress=document.getElementById('testRunFrom').value.trim();const subject=document.getElementById('testRunSubject').value;const text=document.getElementById('testRunText').value;const userIdRaw=document.getElementById('testRunUserId').value.trim();if(!fromAddress){alert('请填写发件人');return}const body={fromAddress,subject,text};if(userIdRaw)body.userId=parseInt(userIdRaw,10);const d=await api('/extract-rules/test-run',{method:'POST',body:JSON.stringify(body)});const summary=document.getElementById('testRunSummary');const b=document.getElementById('testRunBody');if(!d.rules.length){b.innerHTML='<tr><td colspan="8" class="empty">无适用规则</td></tr>'}else{b.innerHTML=d.rules.map(r=>'<tr'+(r.matched&&d.matchedRuleId===r.ruleId?' style="background:#14532d33"':'')+'><td>'+r.order+'</td><td>'+r.ruleId+'</td><td>'+r.domain+'</td><td>'+r.priority+'</td><td><code>'+r.regex+'</code></td><td><span class="badge '+(r.matched?'badge-ok':'badge-off')+'">'+(r.matched?'是':'否')+'</span></td><td>'+(r.extractedCode||'-')+'</td><td>'+(r.remark||'-')+'</td></tr>').join('')}if(d.extractedCode){summary.textContent='最终提取: '+d.extractedCode+(d.matchedRuleId?'（规则 #'+d.matchedRuleId+(d.matchedRuleDomain?' · '+d.matchedRuleDomain:'')+'）':'（内置兜底）')}else{summary.textContent='未提取到验证码'}}
 (async()=>{try{const d=await api('/stats');if(d.success){showApp();loadAll()}}catch{showLogin()}})();
 document.getElementById('passwordInput').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 </script>

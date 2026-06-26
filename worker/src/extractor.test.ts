@@ -6,8 +6,11 @@ import {
   matchGenericCode,
   matchWithRegex,
   extractLink,
+  evaluateExtractRules,
 } from './extractor';
+import { sortExtractRulesForDomain } from './database';
 import { reconstructRawEmail } from './database';
+import type { ExtractRule } from './types';
 
 describe('extractLink', () => {
   it('extracts verification URLs from text', () => {
@@ -116,5 +119,114 @@ describe('matchWithRegex', () => {
 
   it('returns null for invalid regex', () => {
     assert.equal(matchWithRegex('test', '[invalid'), null);
+  });
+});
+
+describe('sortExtractRulesForDomain', () => {
+  const base = (overrides: Partial<ExtractRule>): ExtractRule => ({
+    id: overrides.id ?? 1,
+    domain: overrides.domain ?? '*',
+    regex: overrides.regex ?? '(\\d{6})',
+    priority: overrides.priority ?? 0,
+    enabled: true,
+    createdAt: 1,
+    userId: overrides.userId ?? null,
+    remark: null,
+  });
+
+  it('prefers user rules over global rules', () => {
+    const sorted = sortExtractRulesForDomain(
+      [
+        base({ id: 1, userId: null, priority: 100 }),
+        base({ id: 2, userId: 5, priority: 0 }),
+      ],
+      'example.com'
+    );
+    assert.equal(sorted[0].id, 2);
+  });
+
+  it('prefers exact domain over wildcard within same scope', () => {
+    const sorted = sortExtractRulesForDomain(
+      [
+        base({ id: 1, domain: '*', priority: 100 }),
+        base({ id: 2, domain: 'npmjs.com', priority: 0 }),
+      ],
+      'npmjs.com'
+    );
+    assert.equal(sorted[0].id, 2);
+  });
+
+  it('sorts by priority descending within same scope and domain specificity', () => {
+    const sorted = sortExtractRulesForDomain(
+      [
+        base({ id: 1, domain: 'npmjs.com', priority: 1 }),
+        base({ id: 2, domain: 'npmjs.com', priority: 10 }),
+      ],
+      'npmjs.com'
+    );
+    assert.equal(sorted[0].id, 2);
+  });
+});
+
+describe('evaluateExtractRules', () => {
+  const npmRule: ExtractRule = {
+    id: 3,
+    domain: 'npmjs.com',
+    regex: NPM_OTP_REGEX.source,
+    priority: 0,
+    enabled: true,
+    createdAt: 1,
+    userId: null,
+    remark: 'npm OTP',
+  };
+
+  it('returns matched rule id and domain from first matching rule', () => {
+    const { result, rows } = evaluateExtractRules(
+      [npmRule],
+      'The OTP code is: 123456',
+      'npm signup'
+    );
+    assert.deepEqual(result, { code: '123456', ruleId: 3, ruleDomain: 'npmjs.com' });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].matched, true);
+    assert.equal(rows[0].order, 1);
+  });
+
+  it('uses generic fallback with null rule id when no rule matches', () => {
+    const { result, rows } = evaluateExtractRules(
+      [npmRule],
+      'Your verification code: 654321',
+      'Verify'
+    );
+    assert.deepEqual(result, { code: '654321', ruleId: null, ruleDomain: null });
+    assert.equal(rows[0].matched, false);
+  });
+
+  it('stops at first matching rule in evaluation order', () => {
+    const rules: ExtractRule[] = [
+      {
+        id: 10,
+        domain: '*',
+        regex: '(\\d{4})',
+        priority: 5,
+        enabled: true,
+        createdAt: 1,
+        userId: null,
+        remark: null,
+      },
+      {
+        id: 11,
+        domain: '*',
+        regex: '(\\d{6})',
+        priority: 1,
+        enabled: true,
+        createdAt: 1,
+        userId: null,
+        remark: null,
+      },
+    ];
+    const { result } = evaluateExtractRules(rules, 'code 123456', 'test');
+    assert.equal(result?.ruleId, 10);
+    assert.equal(result?.code, '1234');
   });
 });

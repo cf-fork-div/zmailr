@@ -208,7 +208,9 @@
     "edit": "编辑",
     "remarkPlaceholder": "可选，说明规则用途",
     "regexPlaceholder": "(?:code|验证码)[：:\\s]*(\\d{4,8})",
-    "domainPlaceholder": "example.com 或 *"
+    "domainPlaceholder": "example.com 或 *",
+    "priorityHintTitle": "规则匹配顺序",
+    "priorityHintBody": "priority 数值越大越先尝试匹配；但整体顺序为：用户自定义规则优先于全局规则，发件人域名精确匹配优先于通配符 *，同层内再按 priority 降序。"
   },
   "common": {
     "loading": "加载中...",
@@ -304,7 +306,8 @@
     "messages": "封邮件",
     "verificationCode": "验证码",
     "otpLabel": "OTP",
-    "clickToCopy": "点击复制"
+    "clickToCopy": "点击复制",
+    "extractedByRule": "由规则 #{{id}} ({{domain}}) 提取"
   },
   "settings": {
     "theme": "主题",

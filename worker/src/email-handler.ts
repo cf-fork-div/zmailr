@@ -37,7 +37,7 @@ export async function handleEmail(message: any, env: Env): Promise<void> {
 
     // 提取验证码
     const bodyText = email.text || stripHtml(email.html || '');
-    const extractedCode = await extractCode(
+    const extractResult = await extractCode(
       env.DB,
       bodyText,
       email.subject || '',
@@ -45,8 +45,8 @@ export async function handleEmail(message: any, env: Env): Promise<void> {
       mailbox.userId
     );
 
-    if (extractedCode) {
-      console.log('提取到验证码:', extractedCode);
+    if (extractResult) {
+      console.log('提取到验证码:', extractResult.code, '规则:', extractResult.ruleId);
     }
 
     const rawContent = rawMessageToString(message.raw);
@@ -61,7 +61,8 @@ export async function handleEmail(message: any, env: Env): Promise<void> {
       textContent: email.text || '',
       htmlContent: email.html || '',
       hasAttachments: !!email.attachments?.length,
-      extractedCode,
+      extractedCode: extractResult?.code ?? null,
+      matchedRuleId: extractResult?.ruleId ?? null,
       rawContent,
     });
 

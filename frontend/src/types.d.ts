@@ -27,6 +27,9 @@ interface Email {
   hasAttachments: boolean;
   isRead: boolean;
   extractedCode?: string | null;
+  matchedRuleId?: number | null;
+  matchedRuleDomain?: string | null;
+  matchedRuleRemark?: string | null;
 }
 
 interface Attachment {

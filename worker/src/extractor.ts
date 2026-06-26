@@ -1,5 +1,6 @@
 import { D1Database } from '@cloudflare/workers-types';
 import { getEnabledExtractRules } from './database';
+import type { ExtractRule } from './types';
 
 /** 通用兜底正则（支持「验证码为/是：123456」等常见中文格式） */
 export const GENERIC_CODE_REGEX =
@@ -41,6 +42,30 @@ export const SEED_GLOBAL_EXTRACT_RULES = [
   },
 ] as const;
 
+export interface ExtractResult {
+  code: string;
+  ruleId: number | null;
+  ruleDomain: string | null;
+}
+
+export interface ExtractRuleTestRow {
+  ruleId: number;
+  domain: string;
+  priority: number;
+  regex: string;
+  remark: string | null;
+  matched: boolean;
+  extractedCode?: string;
+  order: number;
+}
+
+export interface ExtractRuleTestRunResult {
+  extractedCode: string | null;
+  matchedRuleId: number | null;
+  matchedRuleDomain: string | null;
+  rules: ExtractRuleTestRow[];
+}
+
 /**
  * 从邮件正文中提取验证码
  *
@@ -56,18 +81,71 @@ export async function extractCode(
   subject: string,
   fromAddress: string,
   userId?: number | null
-): Promise<string | null> {
+): Promise<ExtractResult | null> {
   const senderDomain = fromAddress.split('@')[1]?.toLowerCase() || '';
-  const combined = `${subject}\n${text}`;
-
   const rules = await getEnabledExtractRules(db, senderDomain, userId);
+  return evaluateExtractRules(rules, text, subject).result;
+}
 
-  for (const rule of rules) {
+export function evaluateExtractRules(
+  rules: ExtractRule[],
+  text: string,
+  subject: string
+): { result: ExtractResult | null; rows: ExtractRuleTestRow[] } {
+  const combined = `${subject}\n${text}`;
+  const rows: ExtractRuleTestRow[] = rules.map((rule, index) => {
     const code = matchWithRegex(combined, rule.regex);
-    if (code) return code;
+    return {
+      ruleId: rule.id,
+      domain: rule.domain,
+      priority: rule.priority,
+      regex: rule.regex,
+      remark: rule.remark ?? null,
+      matched: !!code,
+      extractedCode: code ?? undefined,
+      order: index + 1,
+    };
+  });
+
+  const firstMatch = rows.find((row) => row.matched);
+  if (firstMatch?.extractedCode) {
+    return {
+      result: {
+        code: firstMatch.extractedCode,
+        ruleId: firstMatch.ruleId,
+        ruleDomain: firstMatch.domain,
+      },
+      rows,
+    };
   }
 
-  return matchGenericCode(combined, text, subject);
+  const generic = matchGenericCode(combined, text, subject);
+  if (generic) {
+    return {
+      result: { code: generic, ruleId: null, ruleDomain: null },
+      rows,
+    };
+  }
+
+  return { result: null, rows };
+}
+
+export async function testRunExtractRules(
+  db: D1Database,
+  fromAddress: string,
+  subject: string,
+  text: string,
+  userId?: number | null
+): Promise<ExtractRuleTestRunResult> {
+  const senderDomain = fromAddress.split('@')[1]?.toLowerCase() || '';
+  const rules = await getEnabledExtractRules(db, senderDomain, userId);
+  const { result, rows } = evaluateExtractRules(rules, text, subject);
+  return {
+    extractedCode: result?.code ?? null,
+    matchedRuleId: result?.ruleId ?? null,
+    matchedRuleDomain: result?.ruleDomain ?? null,
+    rules: rows,
+  };
 }
 
 export function matchGenericCode(

@@ -121,6 +121,9 @@ export interface Email {
   hasAttachments: boolean;
   isRead: boolean;
   extractedCode?: string | null;
+  matchedRuleId?: number | null;
+  matchedRuleDomain?: string | null;
+  matchedRuleRemark?: string | null;
   rawContent?: string | null;
 }
 
@@ -135,6 +138,7 @@ export interface SaveEmailParams {
   htmlContent?: string;
   hasAttachments?: boolean;
   extractedCode?: string | null;
+  matchedRuleId?: number | null;
   rawContent?: string | null;
 }
 
@@ -342,6 +346,9 @@ export interface EmailListItem {
   hasAttachments: boolean;
   isRead: boolean;
   extractedCode?: string | null;
+  matchedRuleId?: number | null;
+  matchedRuleDomain?: string | null;
+  matchedRuleRemark?: string | null;
 }
 
 // 附件类型

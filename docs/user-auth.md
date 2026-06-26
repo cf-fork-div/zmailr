@@ -196,11 +196,15 @@ Cookie: zmail_user_session=...
 2. 管理后台全局规则（`extract_rules.user_id IS NULL`）
 3. 内置兜底规则（硬编码，UI 只读）
 
-同层级内：发件人域名精确匹配优于 `*`，再按 `priority` 降序。
+同层级内：发件人域名精确匹配优于 `*`，再按 `priority` 降序（数值越大越先匹配）。
+
+**历史邮件**：`extracted_code` 与 `matched_rule_id` 在收信时写入；修改或新增规则后，仅对新收到的邮件生效。已有邮件不会自动重算，除非另行实现 re-extract 接口。
+
+**收件箱刷新**：Dashboard 收件箱在打开邮箱后会立即拉取一次邮件列表；默认每 15 秒自动刷新（可通过列表工具栏的时钟按钮关闭）。也可随时点击刷新按钮手动更新。
 
 首次部署时还会写入若干全局种子规则（如 `npmjs.com` 的 OTP 格式）；已有数据库在迁移时自动补全缺失的种子规则。用户可在 Dashboard 添加个人规则覆盖或补充特定发件人域名。
 
-管理后台全局规则：`GET/POST/PUT/DELETE /{ADMIN_PATH}/api/rules`。
+管理后台全局规则：`GET/POST/PUT/DELETE /{ADMIN_PATH}/api/rules`；样例试跑：`POST /{ADMIN_PATH}/api/extract-rules/test-run`（body: `{ fromAddress, subject, text, userId? }`）。
 
 ---
 

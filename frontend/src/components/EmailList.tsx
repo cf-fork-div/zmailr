@@ -247,6 +247,8 @@ const EmailList: React.FC<EmailListProps> = ({
                         code={email.extractedCode}
                         size="sm"
                         className="shrink-0"
+                        matchedRuleId={email.matchedRuleId}
+                        matchedRuleDomain={email.matchedRuleDomain}
                         onCopy={() => showSuccessMessage(t('common.copied'))}
                       />
                     )}

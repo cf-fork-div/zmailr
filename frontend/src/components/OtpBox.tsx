@@ -7,9 +7,18 @@ interface OtpBoxProps {
   onCopy?: () => void;
   size?: 'sm' | 'md';
   className?: string;
+  matchedRuleId?: number | null;
+  matchedRuleDomain?: string | null;
 }
 
-const OtpBox: React.FC<OtpBoxProps> = ({ code, onCopy, size = 'sm', className }) => {
+const OtpBox: React.FC<OtpBoxProps> = ({
+  code,
+  onCopy,
+  size = 'sm',
+  className,
+  matchedRuleId,
+  matchedRuleDomain,
+}) => {
   const { t } = useTranslation();
 
   const handleClick = (e: React.MouseEvent) => {
@@ -45,6 +54,14 @@ const OtpBox: React.FC<OtpBoxProps> = ({ code, onCopy, size = 'sm', className })
       >
         {code}
       </span>
+      {matchedRuleId != null && (
+        <span className="mt-1 text-[10px] leading-tight text-muted-foreground text-center">
+          {t('email.extractedByRule', {
+            id: matchedRuleId,
+            domain: matchedRuleDomain || '*',
+          })}
+        </span>
+      )}
     </Wrapper>
   );
 };

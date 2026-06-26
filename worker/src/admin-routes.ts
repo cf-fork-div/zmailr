@@ -31,6 +31,7 @@ import {
   writeAuditLog,
 } from './database';
 import { validateExtractRuleInput } from './utils';
+import { testRunExtractRules } from './extractor';
 import {
   isAdminAuthenticated,
   verifyAdminPassword,
@@ -347,6 +348,27 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
       })
     );
     return c.json({ success: true });
+  });
+
+  admin.post('/api/extract-rules/test-run', async (c) => {
+    const authErr = await requireAdmin(c);
+    if (authErr) return authErr;
+    const body = await c.req.json();
+    const fromAddress = String(body.fromAddress ?? '').trim();
+    const subject = String(body.subject ?? '');
+    const text = String(body.text ?? '');
+    if (!fromAddress) {
+      return c.json({ success: false, error: 'fromAddress 必填' }, 400);
+    }
+    const userId =
+      body.userId !== undefined && body.userId !== null && body.userId !== ''
+        ? parseInt(String(body.userId), 10)
+        : null;
+    if (userId != null && Number.isNaN(userId)) {
+      return c.json({ success: false, error: 'userId 无效' }, 400);
+    }
+    const result = await testRunExtractRules(c.env.DB, fromAddress, subject, text, userId);
+    return c.json({ success: true, ...result });
   });
 
   admin.get('/api/sent-emails', async (c) => {
