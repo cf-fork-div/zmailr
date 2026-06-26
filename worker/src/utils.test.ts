@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldTouchTokenLastUsed, TOKEN_LAST_USED_TOUCH_INTERVAL_SEC, validateExtractRuleInput, validateSendFromAddress } from './utils';
+import { shouldTouchTokenLastUsed, TOKEN_LAST_USED_TOUCH_INTERVAL_SEC, validateExtractRuleInput, validateSendFromAddress, extractMailboxName } from './utils';
 
 describe('shouldTouchTokenLastUsed', () => {
   it('touches when last_used_at is null', () => {
@@ -83,5 +83,15 @@ describe('validateSendFromAddress', () => {
     if (result.ok) {
       assert.equal(result.fromEmail, 'abc123@itool.eu.cc');
     }
+  });
+});
+
+describe('extractMailboxName', () => {
+  it('returns local-part from full address', () => {
+    assert.equal(extractMailboxName('user@example.com'), 'user');
+  });
+
+  it('returns input when no @ present', () => {
+    assert.equal(extractMailboxName('localonly'), 'localonly');
   });
 });

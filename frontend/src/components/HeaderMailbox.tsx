@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { createUserMailbox } from '../utils/api';
 import MailboxSwitcher from './MailboxSwitcher';
 import { MailboxContext } from '../contexts/MailboxContext';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 interface HeaderMailboxProps {
   mailbox: Mailbox | null;
@@ -37,10 +38,10 @@ const HeaderMailbox: React.FC<HeaderMailboxProps> = ({
     ? mailbox.address
     : `${mailbox.address}@${selectedDomain}`;
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(fullAddress)
-      .then(() => showSuccessMessage(t('mailbox.copySuccess')))
-      .catch(() => showErrorMessage(t('mailbox.copyFailed')));
+  const copyToClipboard = async () => {
+    const ok = await copyTextToClipboard(fullAddress);
+    if (ok) showSuccessMessage(t('mailbox.copySuccess'));
+    else showErrorMessage(t('mailbox.copyFailed'));
   };
 
   const handleRefreshMailbox = async () => {

@@ -228,12 +228,12 @@ app.get('/api/mailboxes', async (c) => {
       return c.json({ success: false, error: '未授权' }, 401);
     }
 
-    const mailboxes = await listMailboxesByUser(c.env.DB, auth.userId, limit);
+    const mailboxes = await listMailboxesByUser(c.env.DB, auth.userId, { limit });
 
     const domain = getMailDomain(c.env);
     return c.json({
       success: true,
-      mailboxes: mailboxes.map((m) => ({
+      mailboxes: mailboxes.mailboxes.map((m) => ({
         ...m,
         email: `${m.address}@${domain}`,
       })),
@@ -792,8 +792,15 @@ app.get('/api/user/sent', async (c) => {
   if (authErr) return authErr;
   const user = c.get('user')!;
   const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10), 1), 100);
-  const emails = await listUserSentEmails(c.env.DB, user.id, limit);
-  return c.json({ success: true, emails });
+  const page = Math.max(parseInt(c.req.query('page') || '1', 10), 1);
+  const offset = (page - 1) * limit;
+  const search = c.req.query('search') || c.req.query('q') || undefined;
+  const { emails, total } = await listUserSentEmails(c.env.DB, user.id, {
+    limit,
+    offset,
+    search,
+  });
+  return c.json({ success: true, emails, total, page, pageSize: limit });
 });
 
 app.get('/api/user/sent/:id', async (c) => {
@@ -883,8 +890,18 @@ app.get('/api/user/mailboxes', async (c) => {
   if (authErr) return authErr;
   const user = c.get('user')!;
   const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10), 1), 100);
+  const page = Math.max(parseInt(c.req.query('page') || '1', 10), 1);
+  const offset = (page - 1) * limit;
   const includeExpired = c.req.query('includeExpired') === 'true';
-  const mailboxes = await listMailboxesByUser(c.env.DB, user.id, limit, includeExpired);
+  const hasEmails = c.req.query('hasEmails') === 'true';
+  const search = c.req.query('search') || c.req.query('q') || undefined;
+  const { mailboxes, total } = await listMailboxesByUser(c.env.DB, user.id, {
+    limit,
+    offset,
+    includeExpired,
+    hasEmails,
+    search,
+  });
   const domain = getMailDomain(c.env);
   const now = getCurrentTimestamp();
   return c.json({
@@ -894,6 +911,9 @@ app.get('/api/user/mailboxes', async (c) => {
       email: `${m.address}@${domain}`,
       isExpired: m.expiresAt <= now,
     })),
+    total,
+    page,
+    pageSize: limit,
   });
 });
 

@@ -7,7 +7,8 @@ import {
   UserMailboxItem,
 } from '../utils/api';
 import { getDefaultEmailDomain, DEFAULT_EMAIL_DOMAIN } from '../config';
-import ListPagination, { useClientPagination } from './ListPagination';
+import { formatMailboxTimeLeft } from '../utils/mailboxTime';
+import ListPagination, { HISTORY_PAGE_SIZE } from './ListPagination';
 
 interface MailboxHistoryListProps {
   activeAddress?: string;
@@ -24,25 +25,50 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
 }) => {
   const { t } = useTranslation();
   const [mailboxes, setMailboxes] = useState<UserMailboxItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [domain, setDomain] = useState(DEFAULT_EMAIL_DOMAIN);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  const { page, setPage, totalPages, pageItems, resetPage } = useClientPagination(mailboxes);
 
-  const load = async () => {
+  const totalPages = Math.max(1, Math.ceil(total / HISTORY_PAGE_SIZE));
+
+  const load = async (pageNum = page, searchTerm = search) => {
     setLoading(true);
-    const result = await getUserMailboxes(true);
-    if (result.success) setMailboxes(result.mailboxes);
+    const result = await getUserMailboxes({
+      includeExpired: true,
+      hasEmails: true,
+      page: pageNum,
+      limit: HISTORY_PAGE_SIZE,
+      search: searchTerm || undefined,
+    });
+    if (result.success) {
+      setMailboxes(result.mailboxes);
+      setTotal(result.total);
+      setPage(result.page);
+    }
     setLoading(false);
     setSelected(new Set());
-    resetPage();
   };
 
   useEffect(() => {
-    load();
     getDefaultEmailDomain().then(setDomain).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    load(page, search);
+  }, [page, search]);
 
   const fmtTime = (ts: number) =>
     new Date(ts > 1e12 ? ts : ts * 1000).toLocaleString();
@@ -56,7 +82,7 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
     });
   };
 
-  const pageAddresses = pageItems.map((m) => m.address);
+  const pageAddresses = mailboxes.map((m) => m.address);
   const allPageSelected =
     pageAddresses.length > 0 && pageAddresses.every((address) => selected.has(address));
 
@@ -84,7 +110,7 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
       await apiDeleteMailbox(address);
       onDeleted?.(address);
     }
-    await load();
+    await load(page, search);
     setBusy(false);
   };
 
@@ -93,7 +119,7 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
     setBusy(true);
     await apiDeleteMailbox(address);
     onDeleted?.(address);
-    await load();
+    await load(page, search);
     setBusy(false);
   };
 
@@ -101,7 +127,7 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
     setBusy(true);
     const result = await reactivateUserMailbox(address);
     if (result.success) {
-      await load();
+      await load(page, search);
       onReactivated?.(result.mailbox);
     }
     setBusy(false);
@@ -113,18 +139,16 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
         <h2 className="text-sm font-semibold uppercase tracking-wide">{t('history.mailboxList')}</h2>
         <div className="flex items-center gap-1">
           {mailboxes.length > 0 && (
-            <>
-              <button
-                onClick={handleDeleteSelected}
-                disabled={busy || selected.size === 0}
-                className="px-3 py-2 min-h-10 text-xs rounded-md hover:bg-muted transition-colors text-muted-foreground disabled:opacity-40"
-              >
-                {t('history.deleteSelected')}
-              </button>
-            </>
+            <button
+              onClick={handleDeleteSelected}
+              disabled={busy || selected.size === 0}
+              className="px-3 py-2 min-h-10 text-xs rounded-md hover:bg-muted transition-colors text-muted-foreground disabled:opacity-40"
+            >
+              {t('history.deleteSelected')}
+            </button>
           )}
           <button
-            onClick={load}
+            onClick={() => load(page, search)}
             disabled={busy}
             className="p-2 min-w-10 min-h-10 rounded-md hover:bg-muted transition-colors text-muted-foreground"
             title={t('common.refresh')}
@@ -133,10 +157,22 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
           </button>
         </div>
       </div>
+      <div className="px-4 py-2 border-b bg-muted/5">
+        <input
+          type="search"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder={t('history.searchMailbox')}
+          className="w-full px-3 py-2 text-sm rounded-md border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          aria-label={t('history.searchMailbox')}
+        />
+      </div>
       {loading ? (
         <div className="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</div>
       ) : mailboxes.length === 0 ? (
-        <div className="py-8 text-center text-sm text-muted-foreground">{t('history.noMailboxes')}</div>
+        <div className="py-8 text-center text-sm text-muted-foreground">
+          {search ? t('history.noSearchResults') : t('history.noMailboxes')}
+        </div>
       ) : (
         <>
           <div className="hidden sm:grid grid-cols-[auto_1fr_auto_auto] gap-2 px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide border-b bg-muted/10 items-center">
@@ -151,7 +187,7 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
             <span className="text-right">{t('mailbox.expiresAt')}</span>
           </div>
           <div className="divide-y">
-            {pageItems.map((mb) => {
+            {mailboxes.map((mb) => {
               const full = mb.email || `${mb.address}@${domain}`;
               const isActive = activeAddress === mb.address;
               const isExpired = mb.isExpired ?? mb.expiresAt <= Math.floor(Date.now() / 1000);
@@ -184,7 +220,7 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
                   </span>
                   <div className="flex items-center gap-1 sm:justify-end">
                     <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline">
-                      {isExpired ? t('mailbox.expired') : fmtTime(mb.expiresAt)}
+                      {formatMailboxTimeLeft(mb.expiresAt, t, { later: true })}
                     </span>
                     {isExpired && (
                       <button
@@ -213,7 +249,7 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
             page={page}
             totalPages={totalPages}
             onPageChange={setPage}
-            disabled={busy}
+            disabled={busy || loading}
           />
         </>
       )}

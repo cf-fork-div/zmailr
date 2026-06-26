@@ -391,9 +391,26 @@ export const OPENAPI_SPEC = {
         parameters: [
           { $ref: '#/components/parameters/LimitQuery' },
           {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, default: 1 },
+          },
+          {
             name: 'includeExpired',
             in: 'query',
             schema: { type: 'boolean', default: false },
+          },
+          {
+            name: 'hasEmails',
+            in: 'query',
+            schema: { type: 'boolean', default: false },
+            description: 'Only mailboxes with at least one received email',
+          },
+          {
+            name: 'search',
+            in: 'query',
+            schema: { type: 'string' },
+            description: 'Filter by local-part or full address',
           },
         ],
         responses: { '200': { description: 'Mailboxes' } },
@@ -449,7 +466,20 @@ export const OPENAPI_SPEC = {
         summary: 'List sent emails',
         operationId: 'listUserSent',
         security: [{ sessionCookie: [] }],
-        parameters: [{ $ref: '#/components/parameters/LimitQuery' }],
+        parameters: [
+          { $ref: '#/components/parameters/LimitQuery' },
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, default: 1 },
+          },
+          {
+            name: 'search',
+            in: 'query',
+            schema: { type: 'string' },
+            description: 'Filter by recipient or sender address',
+          },
+        ],
         responses: {
           '200': {
             description: 'Sent list',

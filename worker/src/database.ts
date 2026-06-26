@@ -358,32 +358,76 @@ function mapMailboxRow(result: Record<string, unknown>): Mailbox {
   };
 }
 
+export interface ListMailboxesByUserOptions {
+  limit?: number;
+  offset?: number;
+  includeExpired?: boolean;
+  hasEmails?: boolean;
+  search?: string;
+}
+
+export interface PaginatedMailboxes {
+  mailboxes: Mailbox[];
+  total: number;
+}
+
 export async function listMailboxesByUser(
   db: D1Database,
   userId: number,
-  limit = 50,
-  includeExpired = false
-): Promise<Mailbox[]> {
+  options: ListMailboxesByUserOptions = {}
+): Promise<PaginatedMailboxes> {
+  const limit = options.limit ?? 50;
+  const offset = options.offset ?? 0;
+  const includeExpired = options.includeExpired ?? false;
+  const hasEmails = options.hasEmails ?? false;
+  const searchTerm = (options.search ?? '').trim();
+
   const now = getCurrentTimestamp();
-  const results = includeExpired
-    ? await db
-        .prepare(
-          `SELECT id, address, created_at, expires_at, ip_address, last_accessed, user_id
-           FROM mailboxes WHERE user_id = ?
-           ORDER BY created_at DESC LIMIT ?`
-        )
-        .bind(userId, limit)
-        .all()
-    : await db
-        .prepare(
-          `SELECT id, address, created_at, expires_at, ip_address, last_accessed, user_id
-           FROM mailboxes WHERE user_id = ? AND expires_at > ?
-           ORDER BY created_at DESC LIMIT ?`
-        )
-        .bind(userId, now, limit)
-        .all();
-  if (!results.results) return [];
-  return results.results.map((row) => rowToMailbox(row as Record<string, unknown>));
+  const whereClauses = ['m.user_id = ?'];
+  const bindings: unknown[] = [userId];
+
+  if (!includeExpired) {
+    whereClauses.push('m.expires_at > ?');
+    bindings.push(now);
+  }
+
+  if (hasEmails) {
+    whereClauses.push('EXISTS (SELECT 1 FROM emails e WHERE e.mailbox_id = m.id)');
+  }
+
+  if (searchTerm) {
+    const localPart = (searchTerm.includes('@') ? searchTerm.split('@')[0] : searchTerm)
+      .replace(/[%_]/g, '');
+    if (localPart) {
+      whereClauses.push('m.address LIKE ?');
+      bindings.push(`%${localPart}%`);
+    }
+  }
+
+  const where = whereClauses.join(' AND ');
+  const fromClause = 'FROM mailboxes m';
+
+  const countRow = await db
+    .prepare(`SELECT COUNT(*) as count ${fromClause} WHERE ${where}`)
+    .bind(...bindings)
+    .first<{ count: number }>();
+
+  const results = await db
+    .prepare(
+      `SELECT m.id, m.address, m.created_at, m.expires_at, m.ip_address, m.last_accessed, m.user_id
+       ${fromClause}
+       WHERE ${where}
+       ORDER BY m.created_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .bind(...bindings, limit, offset)
+    .all();
+
+  const mailboxes = results.results
+    ? results.results.map((row) => rowToMailbox(row as Record<string, unknown>))
+    : [];
+
+  return { mailboxes, total: countRow?.count ?? 0 };
 }
 
 export async function reactivateMailbox(
@@ -1356,13 +1400,60 @@ export async function listSentEmails(db: D1Database, limit = 100): Promise<SentE
   return results.results.map(row => mapSentEmailRow(row as Record<string, unknown>));
 }
 
-export async function listUserSentEmails(db: D1Database, userId: number, limit = 50): Promise<SentEmail[]> {
-  const results = await db.prepare(
-    `SELECT ${SENT_EMAIL_LIST_COLUMNS}
-     FROM sent_emails WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`
-  ).bind(userId, limit).all();
-  if (!results.results) return [];
-  return results.results.map(row => mapSentEmailRow(row as Record<string, unknown>));
+export interface ListUserSentEmailsOptions {
+  limit?: number;
+  offset?: number;
+  search?: string;
+}
+
+export interface PaginatedSentEmails {
+  emails: SentEmail[];
+  total: number;
+}
+
+export async function listUserSentEmails(
+  db: D1Database,
+  userId: number,
+  options: ListUserSentEmailsOptions = {}
+): Promise<PaginatedSentEmails> {
+  const limit = options.limit ?? 50;
+  const offset = options.offset ?? 0;
+  const searchTerm = (options.search ?? '').trim();
+
+  const whereClauses = ['user_id = ?'];
+  const bindings: unknown[] = [userId];
+
+  if (searchTerm) {
+    const sanitized = searchTerm.replace(/[%_]/g, '');
+    if (sanitized) {
+      whereClauses.push('(to_email LIKE ? OR from_email LIKE ?)');
+      bindings.push(`%${sanitized}%`, `%${sanitized}%`);
+    }
+  }
+
+  const where = whereClauses.join(' AND ');
+
+  const countRow = await db
+    .prepare(`SELECT COUNT(*) as count FROM sent_emails WHERE ${where}`)
+    .bind(...bindings)
+    .first<{ count: number }>();
+
+  const results = await db
+    .prepare(
+      `SELECT ${SENT_EMAIL_LIST_COLUMNS}
+       FROM sent_emails
+       WHERE ${where}
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .bind(...bindings, limit, offset)
+    .all();
+
+  const emails = results.results
+    ? results.results.map((row) => mapSentEmailRow(row as Record<string, unknown>))
+    : [];
+
+  return { emails, total: countRow?.count ?? 0 };
 }
 
 export async function getUserSentEmailById(

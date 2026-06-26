@@ -5,7 +5,7 @@ import DashboardPageHeader from '../components/DashboardPageHeader';
 import StatCard from '../components/StatCard';
 import { useAuth } from '../contexts/AuthContext';
 import { MailboxContext } from '../contexts/MailboxContext';
-import ListPagination, { useClientPagination } from '../components/ListPagination';
+import ListPagination, { HISTORY_PAGE_SIZE } from '../components/ListPagination';
 import SentEmailDetailModal from '../components/SentEmailDetailModal';
 import { getUserSentEmails, deleteUserSentEmails, SentEmailItem } from '../utils/api';
 import { getDefaultEmailDomain, DEFAULT_EMAIL_DOMAIN } from '../config';
@@ -15,26 +15,49 @@ const OutboxPage: React.FC = () => {
   const { user, usage, refresh } = useAuth();
   const { mailbox } = useContext(MailboxContext);
   const [sentEmails, setSentEmails] = useState<SentEmailItem[]>([]);
+  const [sentTotal, setSentTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
   const [loadingSent, setLoadingSent] = useState(true);
   const [defaultDomain, setDefaultDomain] = useState(DEFAULT_EMAIL_DOMAIN);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
-  const { page, setPage, totalPages, pageItems, resetPage } = useClientPagination(sentEmails);
 
-  const loadSent = async () => {
+  const totalPages = Math.max(1, Math.ceil(sentTotal / HISTORY_PAGE_SIZE));
+
+  const loadSent = async (pageNum = page, searchTerm = search) => {
     setLoadingSent(true);
-    const result = await getUserSentEmails(50);
-    if (result.success) setSentEmails(result.emails);
+    const result = await getUserSentEmails({
+      page: pageNum,
+      limit: HISTORY_PAGE_SIZE,
+      search: searchTerm || undefined,
+    });
+    if (result.success) {
+      setSentEmails(result.emails);
+      setSentTotal(result.total);
+      setPage(result.page);
+    }
     setLoadingSent(false);
     setSelectedIds(new Set());
-    resetPage();
   };
 
   useEffect(() => {
-    loadSent();
     getDefaultEmailDomain().then(setDefaultDomain).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    loadSent(page, search);
+  }, [page, search]);
 
   const quota = user?.dailySendQuota ?? 0;
   const sendCount = usage?.sendCount ?? user?.sendCountToday ?? 0;
@@ -64,7 +87,7 @@ const OutboxPage: React.FC = () => {
     });
   };
 
-  const pageIds = pageItems.map((e) => e.id);
+  const pageIds = sentEmails.map((e) => e.id);
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
 
   const toggleSelectAll = () => {
@@ -89,20 +112,21 @@ const OutboxPage: React.FC = () => {
     setBulkBusy(true);
     const result = await deleteUserSentEmails({ ids: Array.from(selectedIds) });
     if (result.success) {
-      setSentEmails(sentEmails.filter((e) => !selectedIds.has(e.id)));
-      setSelectedIds(new Set());
+      await loadSent(page, search);
     }
     setBulkBusy(false);
   };
 
   const handleDeleteAll = async () => {
-    if (sentEmails.length === 0) return;
+    if (sentTotal === 0) return;
     if (!confirm(t('history.confirmClearAllSent'))) return;
     setBulkBusy(true);
     const result = await deleteUserSentEmails({ all: true });
     if (result.success) {
       setSentEmails([]);
+      setSentTotal(0);
       setSelectedIds(new Set());
+      setPage(1);
     }
     setBulkBusy(false);
   };
@@ -128,7 +152,7 @@ const OutboxPage: React.FC = () => {
         />
         <StatCard
           label={t('dashboard.statSentTotal')}
-          value={sentEmails.length}
+          value={sentTotal}
           icon="fas fa-list"
           hint={t('dashboard.statSentHint')}
         />
@@ -140,7 +164,7 @@ const OutboxPage: React.FC = () => {
           defaultFrom={defaultFrom}
           onSent={() => {
             refresh();
-            loadSent();
+            loadSent(1, search);
           }}
         />
       </div>
@@ -149,7 +173,7 @@ const OutboxPage: React.FC = () => {
         <div className="px-4 py-3 border-b bg-muted/20 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide">{t('dashboard.sentList')}</h2>
           <div className="flex items-center gap-1">
-            {sentEmails.length > 0 && (
+            {sentTotal > 0 && (
               <>
                 <button
                   onClick={handleDeleteSelected}
@@ -168,7 +192,7 @@ const OutboxPage: React.FC = () => {
               </>
             )}
             <button
-              onClick={loadSent}
+              onClick={() => loadSent(page, search)}
               disabled={bulkBusy}
               className="p-2 min-w-10 min-h-10 rounded-md hover:bg-muted transition-colors text-muted-foreground"
               title={t('common.refresh')}
@@ -177,10 +201,22 @@ const OutboxPage: React.FC = () => {
             </button>
           </div>
         </div>
+        <div className="px-4 py-2 border-b bg-muted/5">
+          <input
+            type="search"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={t('history.searchSent')}
+            className="w-full px-3 py-2 text-sm rounded-md border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            aria-label={t('history.searchSent')}
+          />
+        </div>
         {loadingSent || bulkBusy ? (
           <div className="py-12 text-center text-muted-foreground text-sm">{t('common.loading')}</div>
         ) : sentEmails.length === 0 ? (
-          <div className="py-12 text-center text-muted-foreground text-sm">{t('dashboard.noSentEmails')}</div>
+          <div className="py-12 text-center text-muted-foreground text-sm">
+            {search ? t('history.noSearchResults') : t('dashboard.noSentEmails')}
+          </div>
         ) : (
           <>
             <div className="hidden sm:grid grid-cols-[auto_1fr_2fr_auto] gap-2 px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide border-b bg-muted/10 items-center">
@@ -195,7 +231,7 @@ const OutboxPage: React.FC = () => {
               <span className="text-right">{t('email.date')}</span>
             </div>
             <div className="divide-y">
-              {pageItems.map((email) => (
+              {sentEmails.map((email) => (
                 <div
                   key={email.id}
                   className="px-4 py-3 grid sm:grid-cols-[auto_1fr_2fr_auto] gap-2 items-center text-sm cursor-pointer hover:bg-muted/30"
@@ -232,7 +268,7 @@ const OutboxPage: React.FC = () => {
               page={page}
               totalPages={totalPages}
               onPageChange={setPage}
-              disabled={bulkBusy}
+              disabled={bulkBusy || loadingSent}
             />
           </>
         )}
@@ -244,7 +280,7 @@ const OutboxPage: React.FC = () => {
           onClose={() => setDetailId(null)}
           onResent={() => {
             refresh();
-            loadSent();
+            loadSent(page, search);
           }}
         />
       )}

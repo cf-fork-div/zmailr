@@ -16,14 +16,45 @@ export interface UserMailboxItem {
   isExpired?: boolean;
 }
 
-export const getUserMailboxes = async (includeExpired = false) => {
+export interface UserMailboxesQuery {
+  includeExpired?: boolean;
+  hasEmails?: boolean;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export const getUserMailboxes = async (
+  options: UserMailboxesQuery | boolean = false
+) => {
   try {
-    const query = includeExpired ? '?includeExpired=true' : '';
+    const opts: UserMailboxesQuery =
+      typeof options === 'boolean' ? { includeExpired: options } : options;
+    const params = new URLSearchParams();
+    if (opts.includeExpired) params.set('includeExpired', 'true');
+    if (opts.hasEmails) params.set('hasEmails', 'true');
+    if (opts.search?.trim()) params.set('search', opts.search.trim());
+    if (opts.page != null) params.set('page', String(opts.page));
+    if (opts.limit != null) params.set('limit', String(opts.limit));
+    const query = params.toString() ? `?${params.toString()}` : '';
     const response = await fetch(apiUrl(`/api/user/mailboxes${query}`), fetchOpts);
     if (response.status === 401) return { success: false as const, error: 'Unauthorized' };
     const data = await response.json();
     if (data.success) {
-      return { success: true as const, mailboxes: data.mailboxes as UserMailboxItem[] };
+      return {
+        success: true as const,
+        mailboxes: data.mailboxes as UserMailboxItem[],
+        total: (data.total as number) ?? data.mailboxes.length,
+        page: (data.page as number) ?? 1,
+        pageSize: (data.pageSize as number) ?? data.mailboxes.length,
+      };
     }
     return { success: false as const, error: data.error };
   } catch {
@@ -389,12 +420,33 @@ export interface SentEmailDetail extends SentEmailItem {
   attachments?: SendAttachmentItem[];
 }
 
-export const getUserSentEmails = async (limit = 50) => {
+export interface UserSentEmailsQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+}
+
+export const getUserSentEmails = async (options: UserSentEmailsQuery | number = 50) => {
   try {
-    const response = await fetch(apiUrl(`/api/user/sent?limit=${limit}`), fetchOpts);
+    const opts: UserSentEmailsQuery =
+      typeof options === 'number' ? { limit: options } : options;
+    const params = new URLSearchParams();
+    if (opts.limit != null) params.set('limit', String(opts.limit));
+    if (opts.page != null) params.set('page', String(opts.page));
+    if (opts.search?.trim()) params.set('search', opts.search.trim());
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const response = await fetch(apiUrl(`/api/user/sent${query}`), fetchOpts);
     if (response.status === 401) return { success: false as const, error: 'Unauthorized' };
     const data = await response.json();
-    if (data.success) return { success: true as const, emails: data.emails as SentEmailItem[] };
+    if (data.success) {
+      return {
+        success: true as const,
+        emails: data.emails as SentEmailItem[],
+        total: (data.total as number) ?? data.emails.length,
+        page: (data.page as number) ?? 1,
+        pageSize: (data.pageSize as number) ?? data.emails.length,
+      };
+    }
     return { success: false as const, error: data.error };
   } catch {
     return { success: false as const, error: 'Network error' };
