@@ -10,16 +10,16 @@
 
 | # | 测试项 | 结果 | 截图 |
 |---|--------|------|------|
-| 1 | 管理后台 · 创建并启用公告 | Pass | [admin-announcement-create.png](./screenshots/admin-announcement-create.png), [admin-announcements-list.png](./screenshots/admin-announcements-list.png) |
-| 2 | 用户端 · guest 登录后公告弹窗 | Pass | [announcement-modal.png](./screenshots/announcement-modal.png) |
-| 3 | 用户端 · API Token 创建 | Pass | [api-keys-create.png](./screenshots/api-keys-create.png) |
-| 4 | 用户端 · 新建收件箱 | Pass | [inbox-new-mailbox.png](./screenshots/inbox-new-mailbox.png) |
-| 5 | 用户端 · 收信 + OTP 高亮（收件箱向下滚动至邮件列表） | Pass | [inbox-with-otp.png](./screenshots/inbox-with-otp.png) |
-| 6 | 用户端 · 发件箱 UI 发信 | Pass | [outbox-send.png](./screenshots/outbox-send.png), [outbox-sent.png](./screenshots/outbox-sent.png) |
-| 7 | 用户端 · 自定义提取规则 | Pass | [extract-rules-custom.png](./screenshots/extract-rules-custom.png) |
-| 8 | 用户端 · API 调试 GET /api/user/quota | Pass | [api-debug-response.png](./screenshots/api-debug-response.png) |
-| 9 | 用户端 · 邮箱历史列表 | Pass | [inbox.png](./screenshots/inbox.png)（历史列表可见，可切换地址） |
-| 10 | 管理后台 · 系统设置 UI（未启用维护模式） | Pass | [admin-settings.png](./screenshots/admin-settings.png) |
+| 1 | 管理后台 · 创建并启用公告 | Pass | ![创建公告表单](./screenshots/admin-announcement-create.png)<br>![公告列表](./screenshots/admin-announcements-list.png) |
+| 2 | 用户端 · guest 登录后公告弹窗 | Pass | ![公告弹窗](./screenshots/announcement-modal.png) |
+| 3 | 用户端 · API Token 创建 | Pass | ![Token 创建](./screenshots/api-keys-create.png) |
+| 4 | 用户端 · 新建收件箱 | Pass | ![新建收件箱](./screenshots/inbox-new-mailbox.png) |
+| 5 | 用户端 · 收信 + OTP 高亮（收件箱向下滚动至邮件列表） | Pass | ![收信与 OTP 高亮](./screenshots/inbox-with-otp.png) |
+| 6 | 用户端 · 发件箱 UI 发信 | Pass | ![发件箱撰写](./screenshots/outbox-send.png)<br>![发信记录](./screenshots/outbox-sent.png) |
+| 7 | 用户端 · 自定义提取规则 | Pass | ![自定义提取规则](./screenshots/extract-rules-custom.png) |
+| 8 | 用户端 · API 调试 GET /api/user/quota | Pass | ![API 调试响应](./screenshots/api-debug-response.png) |
+| 9 | 用户端 · 邮箱历史列表 | Pass | ![收件箱历史列表](./screenshots/inbox.png)（历史列表可见，可切换地址） |
+| 10 | 管理后台 · 系统设置 UI（未启用维护模式） | Pass | ![系统设置](./screenshots/admin-settings.png) |
 | 11 | OpenAPI · `GET /openapi.json` 可访问 | Pass | 构建产物同步至 `frontend/public/openapi.json`；`/api-docs` 含链接 |
 | 12 | 公开 API · `GET /api/public/status` 依赖探测 | 待测 | 期望 `status: "ok"`，`checks.d1`/`checks.r2.ok: true`；未配 Brevo 时 `checks.brevo.configured: false` |
 | 13 | 用户端 · 收件箱附件列表与下载 | 待测 | 含附件邮件在详情页展示列表、预览与下载；Session Cookie 鉴权 |
