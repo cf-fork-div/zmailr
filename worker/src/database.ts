@@ -531,6 +531,21 @@ export async function cleanupExpiredMailboxes(db: D1Database): Promise<number> {
 }
 
 /**
+ * 清理指定用户的过期邮箱（列表接口懒删除，避免等待整点 cron）
+ */
+export async function cleanupExpiredMailboxesForUser(
+  db: D1Database,
+  userId: number
+): Promise<number> {
+  const now = getCurrentTimestamp();
+  const result = await db
+    .prepare(`DELETE FROM mailboxes WHERE user_id = ? AND expires_at <= ?`)
+    .bind(userId, now)
+    .run();
+  return result.meta?.changes || 0;
+}
+
+/**
  * 清理过期邮件
  * @param db 数据库实例
  * @returns 删除的邮件数量

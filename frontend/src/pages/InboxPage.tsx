@@ -21,7 +21,6 @@ const InboxPage: React.FC = () => {
     setSelectedEmail,
     isEmailsLoading,
     createNewMailbox,
-    showSuccessMessage,
   } = useContext(MailboxContext);
 
   const [emailDomains, setEmailDomains] = React.useState<string[]>(EMAIL_DOMAINS);
@@ -62,18 +61,6 @@ const InboxPage: React.FC = () => {
       ipAddress: mb.ipAddress,
       lastAccessed: mb.lastAccessed,
     });
-  };
-
-  const handleReactivated = (mb: UserMailboxItem) => {
-    switchToMailbox({
-      id: mb.id,
-      address: mb.address,
-      createdAt: mb.createdAt,
-      expiresAt: mb.expiresAt,
-      ipAddress: mb.ipAddress,
-      lastAccessed: mb.lastAccessed,
-    });
-    showSuccessMessage(t('history.reactivateSuccess'));
   };
 
   const handleHistoryDeleted = (address: string) => {
@@ -152,7 +139,6 @@ const InboxPage: React.FC = () => {
       <MailboxHistoryList
         activeAddress={mailbox?.address}
         onSelect={handleSelectHistoryMailbox}
-        onReactivated={handleReactivated}
         onDeleted={handleHistoryDeleted}
       />
 

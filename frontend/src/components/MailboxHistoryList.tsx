@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import {
   getUserMailboxes,
   deleteMailbox as apiDeleteMailbox,
-  reactivateUserMailbox,
   UserMailboxItem,
 } from '../utils/api';
 import { getDefaultEmailDomain, DEFAULT_EMAIL_DOMAIN } from '../config';
@@ -13,14 +12,12 @@ import ListPagination, { HISTORY_PAGE_SIZE } from './ListPagination';
 interface MailboxHistoryListProps {
   activeAddress?: string;
   onSelect: (mailbox: UserMailboxItem) => void;
-  onReactivated?: (mailbox: UserMailboxItem) => void;
   onDeleted?: (address: string) => void;
 }
 
 const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
   activeAddress,
   onSelect,
-  onReactivated,
   onDeleted,
 }) => {
   const { t } = useTranslation();
@@ -39,7 +36,6 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
   const load = async (pageNum = page, searchTerm = search) => {
     setLoading(true);
     const result = await getUserMailboxes({
-      includeExpired: true,
       hasEmails: true,
       page: pageNum,
       limit: HISTORY_PAGE_SIZE,
@@ -123,16 +119,6 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
     setBusy(false);
   };
 
-  const handleReactivate = async (address: string) => {
-    setBusy(true);
-    const result = await reactivateUserMailbox(address);
-    if (result.success) {
-      await load(page, search);
-      onReactivated?.(result.mailbox);
-    }
-    setBusy(false);
-  };
-
   return (
     <div className="border rounded-lg bg-card overflow-hidden">
       <div className="px-4 py-3 border-b bg-muted/20 flex flex-wrap items-center justify-between gap-2">
@@ -190,7 +176,6 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
             {mailboxes.map((mb) => {
               const full = mb.email || `${mb.address}@${domain}`;
               const isActive = activeAddress === mb.address;
-              const isExpired = mb.isExpired ?? mb.expiresAt <= Math.floor(Date.now() / 1000);
               return (
                 <div
                   key={mb.id}
@@ -209,11 +194,6 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
                     className="min-w-0 text-left"
                   >
                     <p className="font-mono truncate">{full}</p>
-                    {isExpired && (
-                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground mt-0.5 inline-block">
-                        {t('mailbox.expired')}
-                      </span>
-                    )}
                   </button>
                   <span className="text-xs text-muted-foreground whitespace-nowrap">
                     {fmtTime(mb.createdAt)}
@@ -222,16 +202,6 @@ const MailboxHistoryList: React.FC<MailboxHistoryListProps> = ({
                     <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline">
                       {formatMailboxTimeLeft(mb.expiresAt, t, { later: true })}
                     </span>
-                    {isExpired && (
-                      <button
-                        onClick={() => handleReactivate(mb.address)}
-                        disabled={busy}
-                        className="text-xs px-2 py-1 min-h-8 rounded-md bg-primary/10 text-primary hover:bg-primary/20"
-                        title={t('history.reactivate')}
-                      >
-                        {t('history.reactivate')}
-                      </button>
-                    )}
                     <button
                       onClick={() => handleDeleteOne(mb.address)}
                       disabled={busy}

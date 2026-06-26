@@ -39,6 +39,7 @@ import {
   incrementSendUsage,
   incrementLeaseUsage,
   listMailboxesByUser,
+  cleanupExpiredMailboxesForUser,
   findInstantLatestEmailWithCode,
   findInstantLatestEmail,
   getEmailRawContent,
@@ -892,13 +893,13 @@ app.get('/api/user/mailboxes', async (c) => {
   const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10), 1), 100);
   const page = Math.max(parseInt(c.req.query('page') || '1', 10), 1);
   const offset = (page - 1) * limit;
-  const includeExpired = c.req.query('includeExpired') === 'true';
   const hasEmails = c.req.query('hasEmails') === 'true';
   const search = c.req.query('search') || c.req.query('q') || undefined;
+  await cleanupExpiredMailboxesForUser(c.env.DB, user.id);
   const { mailboxes, total } = await listMailboxesByUser(c.env.DB, user.id, {
     limit,
     offset,
-    includeExpired,
+    includeExpired: false,
     hasEmails,
     search,
   });

@@ -398,7 +398,10 @@ export const OPENAPI_SPEC = {
           {
             name: 'includeExpired',
             in: 'query',
+            deprecated: true,
             schema: { type: 'boolean', default: false },
+            description:
+              'Deprecated: expired mailboxes are deleted before listing and never returned.',
           },
           {
             name: 'hasEmails',
