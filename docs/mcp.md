@@ -28,7 +28,7 @@
 | `ZMAILR_BASE_URL` | 是 | 部署实例根 URL（如 `https://zmailr.example.com`，无尾部 `/`） |
 | `ZMAILR_TOKEN` | 是 | Dashboard → **API 密钥** 创建的 Bearer Token |
 
-[演示站](https://zmailr.itool.eu.cc/) 的 `ZMAILR_BASE_URL` 为 `https://zmailr.itool.eu.cc`（账号 `guest` / `guest`，需在 Dashboard 创建 API Token）。
+[演示站](https://zmailr.itool.eu.cc/) 的 `ZMAILR_BASE_URL` 为 `https://zmailr.itool.eu.cc`（使用演示账号登录后，在 Dashboard 创建 API Token）。
 
 ---
 

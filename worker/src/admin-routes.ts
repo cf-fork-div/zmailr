@@ -25,6 +25,8 @@ import {
   getLocalEmailStats,
   getMaintenanceMode,
   setMaintenanceMode,
+  getLegacySendDailyQuota,
+  setLegacySendDailyQuota,
   listAuditLogs,
   writeAuditLog,
 } from './database';
@@ -44,6 +46,9 @@ import {
   rateLimitHeaders,
   rateLimitExceededBody,
   getClientIp,
+  consumeLoginAttempt,
+  recordLoginFailure,
+  clearLoginFailures,
 } from './rate-limit';
 import { logRateLimitHit, logApiRequestStat } from './monitoring';
 import { fetchBrevoAccountIfConfigured } from './brevo-stats';
@@ -94,10 +99,17 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
       if (!c.env.ADMIN_PASSWORD) {
         return c.json({ success: false, error: '未配置 ADMIN_PASSWORD' }, 503);
       }
+      const ip = adminIp(c);
+      const limitCheck = await consumeLoginAttempt(c.env.DB, ip, 'admin-login');
+      if (!limitCheck.ok) {
+        return c.json(rateLimitExceededBody(limitCheck.locked), 429, rateLimitHeaders(limitCheck));
+      }
       const body = await c.req.json();
       if (!verifyAdminPassword(c.env, body.password)) {
+        await recordLoginFailure(c.env.DB, ip, 'admin-login');
         return c.json({ success: false, error: '密码错误' }, 401);
       }
+      await clearLoginFailures(c.env.DB, ip, 'admin-login');
       const cookie = await createAdminSessionCookie(c.env);
       c.executionCtx.waitUntil(
         writeAuditLog(c.env.DB, {
@@ -164,8 +176,11 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
   admin.get('/api/maintenance', async (c) => {
     const authErr = await requireAdmin(c);
     if (authErr) return authErr;
-    const maintenance = await getMaintenanceMode(c.env.DB);
-    return c.json({ success: true, maintenance });
+    const [maintenance, legacySendDailyQuota] = await Promise.all([
+      getMaintenanceMode(c.env.DB),
+      getLegacySendDailyQuota(c.env.DB),
+    ]);
+    return c.json({ success: true, maintenance, legacySendDailyQuota });
   });
 
   admin.put('/api/maintenance', async (c) => {
@@ -179,16 +194,27 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
       blockSend: body.blockSend !== false,
       blockMailboxCreate: body.blockMailboxCreate !== false,
     });
+    let legacySendDailyQuota = await getLegacySendDailyQuota(c.env.DB);
+    if (body.legacySendDailyQuota !== undefined && body.legacySendDailyQuota !== '') {
+      legacySendDailyQuota = await setLegacySendDailyQuota(
+        c.env.DB,
+        parseInt(String(body.legacySendDailyQuota), 10)
+      );
+    }
+    const detail: Record<string, unknown> = {
+      ...(maintenance as unknown as Record<string, unknown>),
+      legacySendDailyQuota,
+    };
     c.executionCtx.waitUntil(
       writeAuditLog(c.env.DB, {
         actorType: 'admin',
         actorName: 'admin',
         action: 'maintenance.update',
-        detail: maintenance as unknown as Record<string, unknown>,
+        detail,
         ip: adminIp(c),
       })
     );
-    return c.json({ success: true, maintenance });
+    return c.json({ success: true, maintenance, legacySendDailyQuota });
   });
 
   admin.get('/api/audit-logs', async (c) => {

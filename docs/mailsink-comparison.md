@@ -55,7 +55,7 @@
 | `POST /v1/inboxes` | `POST /api/lease` | Bearer Token（`lease` scope）；随机地址，24h TTL |
 | | `POST /api/user/mailboxes` | Web 会话；可指定 local-part |
 | | `POST /api/mailboxes` | **已废弃**（恒 401）；创建邮箱请用上述两路径。**不再支持匿名** |
-| `GET /v1/inboxes` | `GET /api/mailboxes` | Bearer Token（`mail`）；用户 Token 按 user_id 过滤，legacy 返回最近活跃邮箱 |
+| `GET /v1/inboxes` | `GET /api/mailboxes` | Bearer Token（`mail`）；**仅用户 Token**，按 `user_id` 过滤；legacy Token 返回 403 |
 | `DELETE /v1/inboxes/{id}` | `DELETE /api/mailboxes/:address` | 需 Bearer（`mail`）或会话 + 邮箱所有权 |
 | `GET /v1/inboxes/{id}/messages` | `GET /api/mailboxes/:address/emails` | 列出邮件（含 `extractedCode` 字段） |
 | `GET /v1/inboxes/{id}/latest-code` | `GET /api/mailboxes/:address/latest-code` | 非阻塞即时查询最新 OTP |
@@ -181,6 +181,9 @@ POST /api/send            （可选）以租用的地址发信
 |------|------|
 | **按用户**（会话或用户 Bearer Token） | 固定 1 分钟窗口；`rate_limit_per_min` + 可选 `rate_limit_burst` |
 | **全局 IP 兜底** | 未识别为用户时（如 legacy Token）默认 **60 req/min** |
+| **Legacy 发信配额** | 管理后台 **系统设置** → Legacy Token 日发信上限（每 IP，默认 50） |
+
+安全细节见 [security.md](./security.md)。
 | **管理预设** | Admin → 用户弹窗：Free 60/min、Pro 600/min + burst 30、Team 3000/min + burst 200、自定义 |
 
 响应头：`X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`、`Retry-After`；超限返回 `429` + `{ "error": "rate_limit" }`。详见 [api.md](./api.md)、[user-auth.md](./user-auth.md) 与 [admin-guide.md](./admin-guide.md)。

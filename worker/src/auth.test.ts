@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { assertMailboxAccess } from './auth';
 import type { ApiAuthContext, Mailbox, User } from './types';
+import { DEFAULT_LEGACY_SEND_DAILY_QUOTA } from './types';
 
 const ownedMailbox: Mailbox = {
   id: 'mb-1',
@@ -91,5 +92,11 @@ describe('assertMailboxAccess', () => {
 
   it('denies unauthenticated access', () => {
     assert.equal(assertMailboxAccess(ownedMailbox, {}), false);
+  });
+});
+
+describe('DEFAULT_LEGACY_SEND_DAILY_QUOTA', () => {
+  it('defaults to 50', () => {
+    assert.equal(DEFAULT_LEGACY_SEND_DAILY_QUOTA, 50);
   });
 });

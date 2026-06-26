@@ -26,26 +26,21 @@ export async function checkD1(db: D1Database): Promise<HealthCheckResult> {
     await db.prepare('SELECT 1 AS ok').first();
     return { ok: true };
   } catch (error) {
-    return {
-      ok: false,
-      message: error instanceof Error ? error.message : String(error),
-    };
+    console.error('D1 health check failed:', error);
+    return { ok: false, message: 'D1 不可用' };
   }
 }
 
 export async function checkR2(bucket?: R2Bucket): Promise<HealthCheckResult> {
   if (!bucket) {
-    return { ok: false, optional: false, message: 'R2 binding ATTACHMENTS not configured' };
+    return { ok: false, optional: false, message: 'R2 未配置' };
   }
   try {
     await bucket.list({ limit: 1 });
     return { ok: true, optional: false };
   } catch (error) {
-    return {
-      ok: false,
-      optional: false,
-      message: error instanceof Error ? error.message : String(error),
-    };
+    console.error('R2 health check failed:', error);
+    return { ok: false, optional: false, message: 'R2 不可用' };
   }
 }
 
@@ -58,11 +53,12 @@ export async function checkBrevo(apiKey?: string): Promise<HealthCheckResult> {
   if (result.ok) {
     return { ok: true, configured: true, optional: true };
   }
+  console.error('Brevo health check failed:', result.error);
   return {
     ok: false,
     configured: true,
     optional: true,
-    message: result.error,
+    message: 'Brevo API 不可用',
   };
 }
 

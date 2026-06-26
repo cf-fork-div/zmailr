@@ -30,6 +30,7 @@ import {
   WriteAuditLogParams,
   MaintenanceMode,
   DEFAULT_MAINTENANCE_MODE,
+  DEFAULT_LEGACY_SEND_DAILY_QUOTA,
   RateLimitStats,
   ApiRequestStats,
   LocalEmailStats,
@@ -71,9 +72,12 @@ function markDatabaseInitializedInIsolate(): void {
 
 /**
  * 每个 Worker isolate 仅执行一次完整迁移；同 isolate 内后续请求跳过 30+ D1 操作。
- * 新部署后冷启动 isolate 仍会跑完整 init；?init= 可强制重跑。
+ * 新部署后冷启动 isolate 仍会跑完整 init。
  */
-export async function ensureDatabaseInitialized(db: D1Database, adminPassword?: string): Promise<void> {
+export async function ensureDatabaseInitialized(
+  db: D1Database,
+  adminPassword?: string
+): Promise<void> {
   if (isDatabaseInitializedInIsolate()) {
     return;
   }
@@ -152,7 +156,6 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);`);
 
     await seedAdminUser(db, adminPassword);
-    await seedGuestUser(db);
     await seedGlobalExtractRules(db);
 
     console.log('数据库初始化成功');
@@ -183,16 +186,6 @@ async function seedAdminUser(db: D1Database, adminPassword?: string): Promise<vo
     `INSERT INTO users (username, password_hash, role, daily_send_quota, enabled) VALUES (?, ?, 'admin', -1, 1)`
   ).bind('admin', passwordHash).run();
   console.log('已创建初始 admin 用户');
-}
-
-async function seedGuestUser(db: D1Database): Promise<void> {
-  const existing = await db.prepare(`SELECT id FROM users WHERE username = ?`).bind('guest').first();
-  if (existing) return;
-  const passwordHash = await hashPassword('guest');
-  await db.prepare(
-    `INSERT INTO users (username, password_hash, role, daily_send_quota, enabled) VALUES (?, ?, 'user', 10, 1)`
-  ).bind('guest', passwordHash).run();
-  console.log('已创建 demo guest 用户');
 }
 
 const SEED_RULE_REMARK_PREFIX = '[seed:';
@@ -924,12 +917,30 @@ export async function deleteUserSentEmails(
 
 // ─── API Token ───────────────────────────────────────────────
 
+function maskStoredApiToken(stored: string): string {
+  if (stored.length <= 8) return '••••••••';
+  return `••••${stored.slice(-4)}`;
+}
+
 export async function verifyApiToken(db: D1Database, token: string): Promise<boolean> {
   const nowMs = Date.now();
-  const result = await db.prepare(
-    `SELECT id FROM api_tokens WHERE token = ? AND expires_at > ?`
-  ).bind(token, nowMs).first();
-  return !!result;
+  const tokenHash = await hashToken(token);
+
+  const hashed = await db
+    .prepare(`SELECT id FROM api_tokens WHERE token = ? AND expires_at > ?`)
+    .bind(tokenHash, nowMs)
+    .first<{ id: number }>();
+  if (hashed) return true;
+
+  // Upgrade legacy plaintext tokens on successful verification
+  const plaintext = await db
+    .prepare(`SELECT id FROM api_tokens WHERE token = ? AND expires_at > ?`)
+    .bind(token, nowMs)
+    .first<{ id: number }>();
+  if (!plaintext) return false;
+
+  await db.prepare(`UPDATE api_tokens SET token = ? WHERE id = ?`).bind(tokenHash, plaintext.id).run();
+  return true;
 }
 
 export async function listApiTokens(db: D1Database): Promise<ApiToken[]> {
@@ -939,7 +950,7 @@ export async function listApiTokens(db: D1Database): Promise<ApiToken[]> {
   if (!results.results) return [];
   return results.results.map(row => ({
     id: row.id as number,
-    token: row.token as string,
+    token: maskStoredApiToken(row.token as string),
     name: row.name as string | null,
     expiresAt: row.expires_at as number,
     createdAt: row.created_at as number,
@@ -948,13 +959,14 @@ export async function listApiTokens(db: D1Database): Promise<ApiToken[]> {
 
 export async function createApiToken(db: D1Database, params: CreateApiTokenParams): Promise<ApiToken> {
   const token = generateApiToken();
+  const tokenHash = await hashToken(token);
   const expiresAt = Date.now() + params.expiresInDays * 24 * 60 * 60 * 1000;
   const result = await db.prepare(
-    `INSERT INTO api_tokens (token, name, expires_at) VALUES (?, ?, ?) RETURNING id, token, name, expires_at, created_at`
-  ).bind(token, params.name ?? null, expiresAt).first();
+    `INSERT INTO api_tokens (token, name, expires_at) VALUES (?, ?, ?) RETURNING id, name, expires_at, created_at`
+  ).bind(tokenHash, params.name ?? null, expiresAt).first();
   return {
     id: result!.id as number,
-    token: result!.token as string,
+    token,
     name: result!.name as string | null,
     expiresAt: result!.expires_at as number,
     createdAt: result!.created_at as number,
@@ -1995,6 +2007,22 @@ export async function getApiRequestStats(db: D1Database): Promise<ApiRequestStat
 // ─── System settings & maintenance mode ──────────────────────
 
 const MAINTENANCE_MODE_KEY = 'maintenance_mode';
+const LEGACY_SEND_DAILY_QUOTA_KEY = 'legacy_send_daily_quota';
+
+export async function getLegacySendDailyQuota(db: D1Database): Promise<number> {
+  const raw = await getSystemSetting(db, LEGACY_SEND_DAILY_QUOTA_KEY);
+  if (raw == null) return DEFAULT_LEGACY_SEND_DAILY_QUOTA;
+  const parsed = parseInt(raw, 10);
+  if (parsed < 0) return -1;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_LEGACY_SEND_DAILY_QUOTA;
+}
+
+export async function setLegacySendDailyQuota(db: D1Database, quota: number): Promise<number> {
+  const normalized =
+    quota < 0 ? -1 : Number.isFinite(quota) && quota > 0 ? Math.floor(quota) : DEFAULT_LEGACY_SEND_DAILY_QUOTA;
+  await setSystemSetting(db, LEGACY_SEND_DAILY_QUOTA_KEY, String(normalized));
+  return normalized;
+}
 
 function parseMaintenanceMode(raw: string | null | undefined): MaintenanceMode {
   if (!raw) return { ...DEFAULT_MAINTENANCE_MODE };

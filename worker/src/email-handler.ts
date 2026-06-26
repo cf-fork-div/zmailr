@@ -95,6 +95,7 @@ export async function handleEmail(message: any, env: Env): Promise<void> {
     }
   } catch (error) {
     console.error('处理邮件失败:', error);
+    throw error;
   }
 }
 
@@ -113,7 +114,16 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const noScript = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ');
+  const text = noScript.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return text
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"');
 }
 
 const MAX_RAW_STORE_BYTES = 1024 * 1024;

@@ -29,10 +29,10 @@ zMailR 管理后台用于运维与用户治理，**不在前端 bundle 中暴露
 | **公告** | 面向 Dashboard 用户的系统公告（Markdown/纯文本） |
 | **提取规则** | 全局规则 + 汇总所有用户自定义规则 |
 | **请求监控** | 近 7 日折线趋势、今日状态码分布、429 Top IP / 用户 |
-| **系统设置** | **维护模式**（可选阻断 lease / 发信 / 创建邮箱） |
+| **系统设置** | **维护模式**（可选阻断 lease / 发信 / 创建邮箱）；**Legacy Token 日发信上限**（每 IP，与用户日配额独立） |
 | **审计日志** | 管理员与用户关键操作记录，按日期筛选 |
 
-Legacy **无配额 API Token** 仍可通过管理 API（`GET/POST/DELETE /{ADMIN_PATH}/api/tokens`）管理，供向后兼容；新用户请使用 Dashboard → API 密钥。
+Legacy **API Token**（`api_tokens`）仍可通过管理 API（`GET/POST/DELETE /{ADMIN_PATH}/api/tokens`）管理，供向后兼容；**不推荐**新部署使用。限制见 [security.md](./security.md)（哈希存储、禁止列邮箱、IP 日发信配额）。新用户请使用 Dashboard → API 密钥。
 
 ---
 
@@ -99,6 +99,16 @@ Legacy **无配额 API Token** 仍可通过管理 API（`GET/POST/DELETE /{ADMIN
 - 被阻断的 API 返回 `503`，body：`{ "success": false, "error": "maintenance", "message": "..." }`
 - 读信、查询配额等未勾选阻断的功能仍可用
 
+### Legacy Token 日发信上限
+
+同一 **系统设置** 面板底部可配置 **Legacy Token 日发信上限（每 IP）**：
+
+- 作用于管理 API 创建的 **全局 `api_tokens`**（非 Dashboard 用户 Token）
+- 与用户 **日发信配额**（用户标签页）相互独立
+- 默认 `50`；设为 `-1` 表示不限制（不推荐生产环境）
+
+配置持久化在 D1 `system_settings` 表，保存时写入审计日志 `maintenance.update`。
+
 ---
 
 ## 依赖健康检查
@@ -148,3 +158,4 @@ Legacy **无配额 API Token** 仍可通过管理 API（`GET/POST/DELETE /{ADMIN
 - [MCP 集成](./mcp.md)
 - [Brevo 发信配置](./brevo-setup.md)
 - [部署指南](./deploy.md)
+- [安全说明](./security.md)

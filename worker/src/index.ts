@@ -1,5 +1,11 @@
 import { Env } from './types';
-import { ensureDatabaseInitialized, initializeDatabase, cleanupExpiredMailboxes, cleanupExpiredMails, cleanupReadMails, cleanupOldApiRequestStats } from './database';
+import {
+  ensureDatabaseInitialized,
+  cleanupExpiredMailboxes,
+  cleanupExpiredMails,
+  cleanupReadMails,
+  cleanupOldApiRequestStats,
+} from './database';
 import { handleEmail } from './email-handler';
 import app from './routes';
 
@@ -7,38 +13,23 @@ import app from './routes';
 export default {
   // 处理HTTP请求
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-    
     try {
-      // 手动初始化数据库（如果请求中包含 init 参数，强制重跑迁移）
-      if (url.searchParams.has('init')) {
-        (globalThis as Record<string, unknown>).__zmailDbInitialized = false;
-        await initializeDatabase(env.DB, env.ADMIN_PASSWORD);
-        (globalThis as Record<string, unknown>).__zmailDbInitialized = true;
-        return new Response(JSON.stringify({
-          success: true,
-          message: '数据库初始化成功',
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
       await ensureDatabaseInitialized(env.DB, env.ADMIN_PASSWORD);
-      
-      // 处理API请求
+
       return app.fetch(request, env, ctx);
     } catch (error) {
       console.error('请求处理失败:', error);
-      
-      // 返回详细的错误信息
-      return new Response(JSON.stringify({
-        success: false,
-        error: '服务器内部错误',
-        message: error instanceof Error ? error.message : String(error)
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: '服务器内部错误',
+        }),
+        {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
     }
   },
   

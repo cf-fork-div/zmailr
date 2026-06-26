@@ -6,9 +6,12 @@ import {
   getUserById,
   getUserByUsername,
   updateUserLastLogin,
+  getMailbox,
+  isMailboxOwnedByUser,
 } from './database';
 import { verifyPassword } from './crypto';
 import { adminPathPrefix } from './admin-path';
+import { validateSendFromAddress } from './utils';
 
 const ADMIN_SESSION_COOKIE = 'zmail_admin_session';
 const USER_SESSION_COOKIE = 'zmail_user_session';
@@ -189,6 +192,49 @@ export async function getAuthenticatedUser(
   const user = await getUserById(db, userId);
   if (!user || !user.enabled) return null;
   return user;
+}
+
+export type SendFromAuthMode = 'user' | 'legacy';
+
+/**
+ * Resolve and authorize a custom from address for outbound mail.
+ * User mode: mailbox must belong to userId.
+ * Legacy mode: only unowned mailboxes (user_id IS NULL).
+ */
+export async function resolveSendFromAddress(
+  db: D1Database,
+  from: string | undefined,
+  mailDomain: string,
+  mode: SendFromAuthMode,
+  userId?: number | null
+): Promise<{ ok: true; fromEmail?: string } | { ok: false; error: string }> {
+  if (from == null || from === '') {
+    return { ok: true };
+  }
+
+  const validated = validateSendFromAddress(String(from), mailDomain);
+  if (!validated.ok) {
+    return validated;
+  }
+
+  const mailbox = await getMailbox(db, validated.localPart);
+  if (!mailbox) {
+    return { ok: false, error: 'from 邮箱不存在或已过期' };
+  }
+
+  if (mailbox.userId != null) {
+    if (mode !== 'user' || userId == null || mailbox.userId !== userId) {
+      return { ok: false, error: '无权使用该发件地址' };
+    }
+    const owned = await isMailboxOwnedByUser(db, validated.localPart, userId);
+    if (!owned) {
+      return { ok: false, error: '无权使用该发件地址' };
+    }
+  } else if (mode !== 'legacy') {
+    return { ok: false, error: '无权使用该发件地址' };
+  }
+
+  return { ok: true, fromEmail: validated.fromEmail };
 }
 
 export async function authenticateUserLogin(

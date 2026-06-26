@@ -1,4 +1,3 @@
-import { D1Database } from '@cloudflare/workers-types';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Env, ApiAuthContext, TokenScope, User, Mailbox, Email } from './types';
@@ -39,9 +38,7 @@ import {
   checkSendQuota,
   incrementSendUsage,
   incrementLeaseUsage,
-  isMailboxOwnedByUser,
   listMailboxesByUser,
-  listActiveMailboxes,
   findInstantLatestEmailWithCode,
   findInstantLatestEmail,
   getEmailRawContent,
@@ -50,8 +47,9 @@ import {
   markAllAnnouncementsRead,
   getMaintenanceMode,
   writeAuditLog,
+  getLegacySendDailyQuota,
 } from './database';
-import { generateRandomAddress, getMailDomain, parseMailboxAddress, getCurrentTimestamp, validateSendFromAddress, validateExtractRuleInput } from './utils';
+import { generateRandomAddress, getMailDomain, parseMailboxAddress, getCurrentTimestamp, validateExtractRuleInput, isValidEmailAddress } from './utils';
 import {
   authenticateApiToken,
   hasScope,
@@ -61,6 +59,7 @@ import {
   authenticateUserLogin,
   createUserSessionCookie,
   clearUserSessionCookie,
+  resolveSendFromAddress,
 } from './auth';
 import { sendMail, validateSendAttachments } from './sender';
 import { extractLink } from './extractor';
@@ -68,15 +67,22 @@ import { isAdminRequest, isLegacyAdminRequest, stripAdminPrefix } from './admin-
 import { createAdminApp } from './admin-routes';
 import {
   consumeRequestRateLimit,
+  consumeRateLimit,
   rateLimitHeaders,
   rateLimitExceededBody,
   getClientIp,
+  consumeLoginAttempt,
+  recordLoginFailure,
+  clearLoginFailures,
+  getLegacySendRateLimitKey,
+  LEGACY_SEND_WINDOW_MS,
 } from './rate-limit';
 import { checkMaintenanceBlock, maintenanceBlockedBody } from './maintenance';
 import { logRateLimitHit, logApiRequestStat } from './monitoring';
 import { getOpenApiJson } from './openapi';
 import { resolveAttachmentBytes } from './r2-attachments';
-import { runHealthChecks } from './health';
+import { matchCorsOrigin } from './cors';
+import { apiInternalError } from './http-response';
 
 type AppVariables = {
   auth?: ApiAuthContext;
@@ -105,14 +111,19 @@ app.use('*', async (c, next) => {
   return await next();
 });
 
-// 添加 CORS 中间件
+// CORS：仅允许配置的域名 + 本地开发源；拒绝未知 Origin
 app.use('/*', cors({
-  origin: (origin) => origin || '*',
+  origin: (origin, c) => matchCorsOrigin(origin, c.env),
   credentials: true,
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
   maxAge: 86400,
 }));
+
+app.onError((error, c) => {
+  console.error('未捕获的路由异常:', error);
+  return c.json(apiInternalError('服务器内部错误', error), 500);
+});
 
 async function apiRateLimitMiddleware(c: any, next: () => Promise<void>) {
   const result = await consumeRequestRateLimit(c.env.DB, c.req.raw, c.env);
@@ -185,12 +196,7 @@ app.get('/api/config', async (c) => {
       },
     });
   } catch (error) {
-    console.error('获取配置失败:', error);
-    return c.json({ 
-      success: false, 
-      error: '获取配置失败',
-      message: error instanceof Error ? error.message : String(error)
-    }, 500);
+    return c.json(apiInternalError('获取配置失败', error), 500);
   }
 });
 
@@ -211,10 +217,16 @@ app.get('/api/mailboxes', async (c) => {
 
   try {
     const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10), 1), 100);
-    const mailboxes =
-      auth.type === 'user' && auth.userId != null
-        ? await listMailboxesByUser(c.env.DB, auth.userId, limit)
-        : await listActiveMailboxes(c.env.DB, limit);
+
+    if (auth.type === 'legacy') {
+      return c.json({ success: false, error: 'legacy Token 不支持列出邮箱' }, 403);
+    }
+
+    if (auth.type !== 'user' || auth.userId == null) {
+      return c.json({ success: false, error: '未授权' }, 401);
+    }
+
+    const mailboxes = await listMailboxesByUser(c.env.DB, auth.userId, limit);
 
     const domain = getMailDomain(c.env);
     return c.json({
@@ -225,12 +237,7 @@ app.get('/api/mailboxes', async (c) => {
       })),
     });
   } catch (error) {
-    console.error('列出邮箱失败:', error);
-    return c.json({
-      success: false,
-      error: '列出邮箱失败',
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+    return c.json(apiInternalError('列出邮箱失败', error), 500);
   }
 });
 
@@ -266,12 +273,7 @@ app.get('/api/mailboxes/:address', async (c) => {
     
     return c.json({ success: true, mailbox: resolved.mailbox });
   } catch (error) {
-    console.error('获取邮箱失败:', error);
-    return c.json({ 
-      success: false, 
-      error: '获取邮箱失败',
-      message: error instanceof Error ? error.message : String(error)
-    }, 500);
+    return c.json(apiInternalError('获取邮箱失败', error), 500);
   }
 });
 
@@ -291,12 +293,7 @@ app.delete('/api/mailboxes/:address', async (c) => {
     
     return c.json({ success: true });
   } catch (error) {
-    console.error('删除邮箱失败:', error);
-    return c.json({ 
-      success: false, 
-      error: '删除邮箱失败',
-      message: error instanceof Error ? error.message : String(error)
-    }, 500);
+    return c.json(apiInternalError('删除邮箱失败', error), 500);
   }
 });
 
@@ -328,12 +325,7 @@ app.get('/api/mailboxes/:address/latest-code', async (c) => {
       },
     });
   } catch (error) {
-    console.error('获取最新验证码失败:', error);
-    return c.json({
-      success: false,
-      error: '获取最新验证码失败',
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+    return c.json(apiInternalError('获取最新验证码失败', error), 500);
   }
 });
 
@@ -370,12 +362,7 @@ app.get('/api/mailboxes/:address/latest-link', async (c) => {
       },
     });
   } catch (error) {
-    console.error('获取最新链接失败:', error);
-    return c.json({
-      success: false,
-      error: '获取最新链接失败',
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+    return c.json(apiInternalError('获取最新链接失败', error), 500);
   }
 });
 
@@ -392,12 +379,7 @@ app.get('/api/mailboxes/:address/emails', async (c) => {
     
     return c.json({ success: true, emails });
   } catch (error) {
-    console.error('获取邮件列表失败:', error);
-    return c.json({ 
-      success: false, 
-      error: '获取邮件列表失败',
-      message: error instanceof Error ? error.message : String(error)
-    }, 500);
+    return c.json(apiInternalError('获取邮件列表失败', error), 500);
   }
 });
 
@@ -410,12 +392,7 @@ app.get('/api/emails/:id', async (c) => {
 
     return c.json({ success: true, email: access.email });
   } catch (error) {
-    console.error('获取邮件详情失败:', error);
-    return c.json({ 
-      success: false, 
-      error: '获取邮件详情失败',
-      message: error instanceof Error ? error.message : String(error)
-    }, 500);
+    return c.json(apiInternalError('获取邮件详情失败', error), 500);
   }
 });
 
@@ -435,12 +412,7 @@ app.get('/api/emails/:id/raw', async (c) => {
     c.header('Content-Disposition', `attachment; filename="${id}.eml"`);
     return c.body(raw);
   } catch (error) {
-    console.error('获取原始邮件失败:', error);
-    return c.json({
-      success: false,
-      error: '获取原始邮件失败',
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+    return c.json(apiInternalError('获取原始邮件失败', error), 500);
   }
 });
 
@@ -455,12 +427,7 @@ app.get('/api/emails/:id/attachments', async (c) => {
     
     return c.json({ success: true, attachments });
   } catch (error) {
-    console.error('获取附件列表失败:', error);
-    return c.json({ 
-      success: false, 
-      error: '获取附件列表失败',
-      message: error instanceof Error ? error.message : String(error)
-    }, 500);
+    return c.json(apiInternalError('获取附件列表失败', error), 500);
   }
 });
 
@@ -507,12 +474,7 @@ app.get('/api/attachments/:id', async (c) => {
       }
     });
   } catch (error) {
-    console.error('获取附件详情失败:', error);
-    return c.json({ 
-      success: false, 
-      error: '获取附件详情失败',
-      message: error instanceof Error ? error.message : String(error)
-    }, 500);
+    return c.json(apiInternalError('获取附件详情失败', error), 500);
   }
 });
 
@@ -527,12 +489,7 @@ app.delete('/api/emails/:id', async (c) => {
     
     return c.json({ success: true });
   } catch (error) {
-    console.error('删除邮件失败:', error);
-    return c.json({ 
-      success: false, 
-      error: '删除邮件失败',
-      message: error instanceof Error ? error.message : String(error)
-    }, 500);
+    return c.json(apiInternalError('删除邮件失败', error), 500);
   }
 });
 
@@ -549,14 +506,22 @@ async function requireUserSession(c: any): Promise<Response | null> {
 
 app.post('/api/auth/login', async (c) => {
   try {
+    const ip = getClientIp(c.req.raw);
+    const limitCheck = await consumeLoginAttempt(c.env.DB, ip);
+    if (!limitCheck.ok) {
+      return c.json(rateLimitExceededBody(limitCheck.locked), 429, rateLimitHeaders(limitCheck));
+    }
+
     const body = await c.req.json();
     if (!body.username || !body.password) {
       return c.json({ success: false, error: '缺少用户名或密码' }, 400);
     }
     const user = await authenticateUserLogin(c.env.DB, String(body.username), String(body.password));
     if (!user) {
+      await recordLoginFailure(c.env.DB, ip);
       return c.json({ success: false, error: '用户名或密码错误' }, 401);
     }
+    await clearLoginFailures(c.env.DB, ip);
     const cookie = await createUserSessionCookie(c.env, user.id);
     c.executionCtx.waitUntil(
       writeAuditLog(c.env.DB, {
@@ -569,8 +534,7 @@ app.post('/api/auth/login', async (c) => {
     );
     return c.json({ success: true, user: { id: user.id, username: user.username, role: user.role } }, 200, { 'Set-Cookie': cookie });
   } catch (error) {
-    console.error('登录失败:', error);
-    return c.json({ success: false, error: '登录失败' }, 500);
+    return c.json(apiInternalError('登录失败', error), 500);
   }
 });
 
@@ -880,12 +844,7 @@ app.delete('/api/user/sent', async (c) => {
     const deleted = await deleteUserSentEmails(c.env.DB, user.id, { ids, all });
     return c.json({ success: true, deleted });
   } catch (error) {
-    console.error('删除发信记录失败:', error);
-    return c.json({
-      success: false,
-      error: '删除发信记录失败',
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+    return c.json(apiInternalError('删除发信记录失败', error), 500);
   }
 });
 
@@ -921,12 +880,7 @@ app.post('/api/user/mailboxes/:address/reactivate', async (c) => {
     }
     return c.json({ success: true, mailbox });
   } catch (error) {
-    console.error('续期邮箱失败:', error);
-    return c.json({
-      success: false,
-      error: '续期邮箱失败',
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+    return c.json(apiInternalError('续期邮箱失败', error), 500);
   }
 });
 
@@ -955,12 +909,7 @@ app.delete('/api/user/emails', async (c) => {
     }
     return c.json({ success: true, deleted });
   } catch (error) {
-    console.error('删除邮件失败:', error);
-    return c.json({
-      success: false,
-      error: '删除邮件失败',
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+    return c.json(apiInternalError('删除邮件失败', error), 500);
   }
 });
 
@@ -992,39 +941,11 @@ app.post('/api/user/mailboxes', async (c) => {
 
     return c.json({ success: true, mailbox });
   } catch (error) {
-    console.error('创建用户邮箱失败:', error);
-    return c.json({
-      success: false,
-      error: '创建邮箱失败',
-      message: error instanceof Error ? error.message : String(error),
-    }, 400);
+    return c.json(apiInternalError('创建邮箱失败', error), 400);
   }
 });
 
 // ─── Web 发信（会话鉴权 + 配额） ─────────────────────────────
-
-async function resolveFromAddress(
-  db: D1Database,
-  from: string | undefined,
-  domain: string,
-  userId: number
-): Promise<{ ok: true; fromEmail?: string } | { ok: false; error: string }> {
-  if (from == null || from === '') {
-    return { ok: true };
-  }
-  const validated = validateSendFromAddress(String(from), domain);
-  if (!validated.ok) {
-    return validated;
-  }
-  const owned = await isMailboxOwnedByUser(db, validated.localPart, userId);
-  if (!owned) {
-    const mailbox = await getMailbox(db, validated.localPart);
-    if (!mailbox) {
-      return { ok: false, error: 'from 邮箱不存在或已过期' };
-    }
-  }
-  return { ok: true, fromEmail: validated.fromEmail };
-}
 
 app.post('/api/user/send', async (c) => {
   const authErr = await requireUserSession(c);
@@ -1036,6 +957,9 @@ app.post('/api/user/send', async (c) => {
     if (!body.to || !body.subject) {
       return c.json({ success: false, error: '缺少 to 或 subject 参数' }, 400);
     }
+    if (!isValidEmailAddress(String(body.to))) {
+      return c.json({ success: false, error: '无效的 to 地址' }, 400);
+    }
     if (!body.text && !body.html) {
       return c.json({ success: false, error: '缺少 text 或 html 内容' }, 400);
     }
@@ -1046,7 +970,7 @@ app.post('/api/user/send', async (c) => {
     }
 
     const domain = getMailDomain(c.env);
-    const fromResult = await resolveFromAddress(c.env.DB, body.from, domain, user.id);
+    const fromResult = await resolveSendFromAddress(c.env.DB, body.from, domain, 'user', user.id);
     if (!fromResult.ok) {
       return c.json({ success: false, error: fromResult.error }, 400);
     }
@@ -1083,12 +1007,7 @@ app.post('/api/user/send', async (c) => {
     );
     return c.json({ success: true, sentEmailId: result.sentEmailId });
   } catch (error) {
-    console.error('Web 发信失败:', error);
-    return c.json({
-      success: false,
-      error: '发送邮件失败',
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+    return c.json(apiInternalError('发送邮件失败', error), 500);
   }
 });
 
@@ -1196,12 +1115,7 @@ app.post('/api/lease', async (c) => {
       expiresAt: mailbox.expiresAt,
     });
   } catch (error) {
-    console.error('租用邮箱失败:', error);
-    return c.json({
-      success: false,
-      error: '租用邮箱失败',
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+    return c.json(apiInternalError('租用邮箱失败', error), 500);
   }
 });
 
@@ -1261,12 +1175,7 @@ app.get('/api/mail', async (c) => {
 
     return c.json({ success: false, error: 'timeout', message: '等待邮件超时' }, 408);
   } catch (error) {
-    console.error('轮询邮件失败:', error);
-    return c.json({
-      success: false,
-      error: '轮询邮件失败',
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+    return c.json(apiInternalError('轮询邮件失败', error), 500);
   }
 });
 
@@ -1281,11 +1190,32 @@ app.post('/api/send', async (c) => {
     if (!body.to || !body.subject) {
       return c.json({ success: false, error: '缺少 to 或 subject 参数' }, 400);
     }
+    if (!isValidEmailAddress(String(body.to))) {
+      return c.json({ success: false, error: '无效的 to 地址' }, 400);
+    }
     if (!body.text && !body.html) {
       return c.json({ success: false, error: '缺少 text 或 html 内容' }, 400);
     }
 
-    if (auth.type === 'user' && auth.userId != null && auth.dailySendQuota != null) {
+    if (auth.type === 'legacy') {
+      const ip = getClientIp(c.req.raw);
+      const legacyQuota = await getLegacySendDailyQuota(c.env.DB);
+      if (legacyQuota >= 0) {
+        const legacyLimit = await consumeRateLimit(
+          c.env.DB,
+          getLegacySendRateLimitKey(ip),
+          legacyQuota,
+          LEGACY_SEND_WINDOW_MS
+        );
+        if (!legacyLimit.ok) {
+          return c.json(
+            { success: false, error: `Legacy Token 每日发信配额已用尽 (${legacyQuota})` },
+            429,
+            rateLimitHeaders(legacyLimit)
+          );
+        }
+      }
+    } else if (auth.type === 'user' && auth.userId != null && auth.dailySendQuota != null) {
       const quotaCheck = await checkSendQuota(c.env.DB, auth.userId, auth.dailySendQuota);
       if (!quotaCheck.ok) {
         return c.json({ success: false, error: quotaCheck.error }, 429);
@@ -1293,18 +1223,18 @@ app.post('/api/send', async (c) => {
     }
 
     const domain = getMailDomain(c.env);
-    let fromEmail: string | undefined;
-    if (body.from != null && body.from !== '') {
-      const validated = validateSendFromAddress(String(body.from), domain);
-      if (!validated.ok) {
-        return c.json({ success: false, error: validated.error }, 400);
-      }
-      const mailbox = await getMailbox(c.env.DB, validated.localPart);
-      if (!mailbox) {
-        return c.json({ success: false, error: 'from 邮箱不存在或已过期' }, 404);
-      }
-      fromEmail = validated.fromEmail;
+    const fromMode = auth.type === 'legacy' ? 'legacy' : 'user';
+    const fromResult = await resolveSendFromAddress(
+      c.env.DB,
+      body.from,
+      domain,
+      fromMode,
+      auth.userId
+    );
+    if (!fromResult.ok) {
+      return c.json({ success: false, error: fromResult.error }, 400);
     }
+    const fromEmail = fromResult.fromEmail;
 
     const attachmentResult = validateSendAttachments(body.attachments);
     if (!attachmentResult.ok) {
@@ -1332,12 +1262,7 @@ app.post('/api/send', async (c) => {
 
     return c.json({ success: true, sentEmailId: result.sentEmailId });
   } catch (error) {
-    console.error('发送邮件失败:', error);
-    return c.json({
-      success: false,
-      error: '发送邮件失败',
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+    return c.json(apiInternalError('发送邮件失败', error), 500);
   }
 });
 

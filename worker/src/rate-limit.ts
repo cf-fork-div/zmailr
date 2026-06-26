@@ -1,5 +1,6 @@
 import { D1Database } from '@cloudflare/workers-types';
 import type { Env, User } from './types';
+import { DEFAULT_LEGACY_SEND_DAILY_QUOTA } from './types';
 import { resolveUserFromSessionOrBearer } from './auth';
 
 export const WINDOW_MS = 60 * 1000;
@@ -18,6 +19,14 @@ export const DEFAULT_IP_GENERAL_LIMIT = 120;
 
 /** Shared per-IP bucket for all /api/* and admin /api/* routes. */
 export const DEFAULT_GLOBAL_IP_RATE_LIMIT = 60;
+
+/** @deprecated import from ./types */
+export { DEFAULT_LEGACY_SEND_DAILY_QUOTA } from './types';
+export const LEGACY_SEND_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function getLegacySendRateLimitKey(ip: string): string {
+  return `legacy-send:${ip}`;
+}
 
 /** Admin UI plan presets (req/min + optional burst). */
 export const RATE_LIMIT_PLANS = {

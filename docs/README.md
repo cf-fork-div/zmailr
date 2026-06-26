@@ -4,7 +4,7 @@
 
 开源、可自托管的 24 小时临时邮箱与 OTP 自动化平台。Web 控制台 + Bearer API + MCP，部署在 Cloudflare Workers。
 
-**在线演示**：[zmailr.itool.eu.cc](https://zmailr.itool.eu.cc/) · 账号 `guest` / `guest`
+**在线演示**：[zmailr.itool.eu.cc](https://zmailr.itool.eu.cc/) · 演示账号由站点管理员在后台创建
 
 </div>
 
@@ -125,6 +125,7 @@ Authorization: Bearer YOUR_TOKEN
 | [MCP 集成](./mcp.md) | `@zmailr/mcp` 工具与 Cursor 配置 |
 | [部署指南](./deploy.md) | D1、Email Routing、R2 附件、本地开发 |
 | [管理后台指南](./admin-guide.md) | 用户、速率方案、维护模式、审计 |
+| [安全说明](./security.md) | 鉴权模型、Legacy Token、部署检查清单 |
 | [Brevo 发信配置](./brevo-setup.md) | 出站发信、SPF/DKIM/DMARC |
 | [E2E 测试报告](./testing.md) | 演示站 Pass/Fail 与截图 |
 | [项目 README](https://github.com/jia0327/zmailr/blob/main/README.md) | 功能概览、效果图、使用指南 |

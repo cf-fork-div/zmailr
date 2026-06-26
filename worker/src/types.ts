@@ -14,6 +14,8 @@ export interface Env {
   MAILCHANNELS_API_KEY?: string;
   /** Default Bearer token requests per minute (optional). */
   RATE_LIMIT_PER_MIN?: string;
+  /** Comma-separated extra CORS origins (full URLs, e.g. https://app.example.com). */
+  CORS_ALLOWED_ORIGINS?: string;
 }
 
 export type UserRole = 'admin' | 'user';
@@ -249,6 +251,8 @@ export interface WriteAuditLogParams {
   detail?: Record<string, unknown> | null;
   ip?: string | null;
 }
+
+export const DEFAULT_LEGACY_SEND_DAILY_QUOTA = 50;
 
 export interface MaintenanceMode {
   enabled: boolean;

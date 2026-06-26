@@ -172,7 +172,7 @@ curl -X POST "https://你的域名/api/send" \
   -d '{"to":"user@example.com","subject":"Test","text":"Hello","from":"abc123@example.com"}'
 ```
 
-`from` 须为已租用且未过期的临时地址。Brevo 配置见 [brevo-setup.md](./brevo-setup.md)。
+`from` 须为**你名下**、域名正确且未过期的临时邮箱（legacy Token 仅可使用无主邮箱）。Brevo 配置见 [brevo-setup.md](./brevo-setup.md)。
 
 ### 5. 查询发信配额
 
@@ -199,6 +199,7 @@ curl "https://你的域名/api/user/quota" \
 | 文档 | 说明 |
 |------|------|
 | [user-auth.md](./user-auth.md) | Session 登录、Token 创建、附件访问、提取规则、安全说明 |
+| [security.md](./security.md) | 鉴权模型、Legacy Token、部署检查清单 |
 | [mcp.md](./mcp.md) | `@zmailr/mcp` 工具与 Cursor 配置 |
 | [deploy.md](./deploy.md) | 部署与部署后验证 |
 | [文档首页](./) | 全部文档分类导航 |
