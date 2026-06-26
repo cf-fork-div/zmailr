@@ -21,6 +21,9 @@ export interface Env {
 export type UserRole = 'admin' | 'user';
 export type TokenScope = 'lease' | 'mail' | 'send';
 
+/** Maximum API tokens a user may hold (active or expired until deleted). */
+export const MAX_USER_TOKENS = 3;
+
 export interface User {
   id: number;
   username: string;

@@ -12,7 +12,7 @@
 | 区域 | 功能点 | 说明 |
 |------|--------|------|
 | **Auth** | 登录 / 登出 | Session Cookie，受保护路由 |
-| | API Token | Dashboard → API 密钥，1 个/用户，scope：`lease` / `mail` / `send` |
+| | API Token | Dashboard → API 密钥，最多 3 个/用户，scope：`lease` / `mail` / `send` |
 | | 无匿名 API | 未带 Bearer 时 `POST /api/lease`、`GET /api/mail` 等返回 401 |
 | **Inbox** | 新建收件箱 | 24h 临时地址 |
 | | 收信 + OTP 高亮 | OtpBox 提取与列表高亮 |

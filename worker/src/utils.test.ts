@@ -1,6 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldTouchTokenLastUsed, TOKEN_LAST_USED_TOUCH_INTERVAL_SEC, validateExtractRuleInput, validateSendFromAddress, extractMailboxName } from './utils';
+import {
+  shouldTouchTokenLastUsed,
+  TOKEN_LAST_USED_TOUCH_INTERVAL_SEC,
+  validateExtractRuleInput,
+  validateSendFromAddress,
+  extractMailboxName,
+  generateApiToken,
+  API_TOKEN_PREFIX,
+} from './utils';
+import { MAX_USER_TOKENS } from './types';
 
 describe('shouldTouchTokenLastUsed', () => {
   it('touches when last_used_at is null', () => {
@@ -93,5 +102,27 @@ describe('extractMailboxName', () => {
 
   it('returns input when no @ present', () => {
     assert.equal(extractMailboxName('localonly'), 'localonly');
+  });
+});
+
+describe('generateApiToken', () => {
+  it('uses zmr_ prefix with 64 hex chars', () => {
+    const token = generateApiToken();
+    assert.match(token, /^zmr_[0-9a-f]{64}$/);
+    assert.equal(token.startsWith(API_TOKEN_PREFIX), true);
+  });
+
+  it('generates unique values', () => {
+    const a = generateApiToken();
+    const b = generateApiToken();
+    assert.notEqual(a, b);
+  });
+});
+
+describe('MAX_USER_TOKENS', () => {
+  it('allows up to 3 tokens per user', () => {
+    assert.equal(MAX_USER_TOKENS, 3);
+    assert.equal(2 >= MAX_USER_TOKENS, false);
+    assert.equal(3 >= MAX_USER_TOKENS, true);
   });
 });

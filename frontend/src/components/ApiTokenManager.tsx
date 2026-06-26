@@ -14,6 +14,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { MailboxContext } from '../contexts/MailboxContext';
 
 const ALL_SCOPES = ['lease', 'mail', 'send'] as const;
+const MAX_USER_TOKENS = 3;
 
 const SCOPE_I18N: Record<(typeof ALL_SCOPES)[number], { label: string; desc: string }> = {
   lease: { label: 'tokens.scopeLease', desc: 'tokens.scopeLeaseDesc' },
@@ -207,7 +208,7 @@ const ApiTokenManager: React.FC<ApiTokenManagerProps> = ({ compact = false, auto
   );
 
   const fmtTime = (ts: number) => new Date(ts > 1e12 ? ts : ts * 1000).toLocaleString();
-  const hasToken = tokens.length > 0;
+  const canCreateMore = tokens.length < MAX_USER_TOKENS;
 
   return (
     <div className="space-y-4">
@@ -235,11 +236,18 @@ const ApiTokenManager: React.FC<ApiTokenManagerProps> = ({ compact = false, auto
 
       <div className={compact ? 'space-y-3' : 'border rounded-lg p-4 bg-card'}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className={compact ? 'text-sm font-semibold' : 'font-semibold'}>{t('auth.apiTokens')}</h2>
-          {!hasToken && (
+          <div className="flex items-center gap-2">
+            <h2 className={compact ? 'text-sm font-semibold' : 'font-semibold'}>{t('auth.apiTokens')}</h2>
+            <span className="text-xs text-muted-foreground">
+              {t('tokens.tokenCount', { count: tokens.length, max: MAX_USER_TOKENS })}
+            </span>
+          </div>
+          {canCreateMore && (
             <button
               onClick={() => setShowCreate(!showCreate)}
-              className="text-sm px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 ring-2 ring-amber-500/50 ring-offset-2 ring-offset-background"
+              className={`text-sm px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90${
+                tokens.length === 0 ? ' ring-2 ring-amber-500/50 ring-offset-2 ring-offset-background' : ''
+              }`}
             >
               {t('auth.createToken')}
             </button>

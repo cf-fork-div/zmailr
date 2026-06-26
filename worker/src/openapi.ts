@@ -349,7 +349,7 @@ export const OPENAPI_SPEC = {
       },
       post: {
         tags: ['User'],
-        summary: 'Create API token (one per user)',
+        summary: 'Create API token (max 3 per user)',
         operationId: 'createUserToken',
         security: [{ sessionCookie: [] }],
         requestBody: {
@@ -369,7 +369,10 @@ export const OPENAPI_SPEC = {
             },
           },
         },
-        responses: { '200': { description: 'Token created (shown once)' }, '400': { description: 'Validation error' } },
+        responses: {
+          '200': { description: 'Token created (shown once)' },
+          '400': { description: 'Validation error or token limit reached (max 3 per user)' },
+        },
       },
     },
     '/api/user/tokens/{id}': {

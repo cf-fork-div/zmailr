@@ -54,11 +54,11 @@ export function loadStoredTokens(userId: number, tokenIds: number[]): Record<num
   return result;
 }
 
-/** Mask token for display: zm_****…abcd (last 4 chars visible). */
+/** Mask token for display: zmr_****…abcd (last 4 chars visible). */
 export function maskApiToken(token: string): string {
-  if (!token) return 'zm_****';
+  if (!token) return 'zmr_****';
   const suffix = token.length <= 4 ? token : token.slice(-4);
-  return `zm_****…${suffix}`;
+  return `zmr_****…${suffix}`;
 }
 
 export function pruneStoredTokens(userId: number, validTokenIds: number[]) {

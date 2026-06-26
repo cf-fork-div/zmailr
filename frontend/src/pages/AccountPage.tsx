@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { createUserToken, deleteUserToken, UserTokenItem } from '../utils/api';
 
 const ALL_SCOPES = ['lease', 'mail', 'send'] as const;
+const MAX_USER_TOKENS = 3;
 
 const AccountPage: React.FC = () => {
   const { t } = useTranslation();
@@ -116,13 +117,20 @@ const AccountPage: React.FC = () => {
 
         <section className="border rounded-lg p-4">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold">{t('auth.apiTokens')}</h2>
-            <button
-              onClick={() => setShowCreate(!showCreate)}
-              className="text-sm px-3 py-1.5 bg-primary text-primary-foreground rounded-md"
-            >
-              {t('auth.createToken')}
-            </button>
+            <div className="flex items-center gap-2">
+              <h2 className="font-semibold">{t('auth.apiTokens')}</h2>
+              <span className="text-xs text-muted-foreground">
+                {t('tokens.tokenCount', { count: tokens.length, max: MAX_USER_TOKENS })}
+              </span>
+            </div>
+            {tokens.length < MAX_USER_TOKENS && (
+              <button
+                onClick={() => setShowCreate(!showCreate)}
+                className="text-sm px-3 py-1.5 bg-primary text-primary-foreground rounded-md"
+              >
+                {t('auth.createToken')}
+              </button>
+            )}
           </div>
 
           {showCreate && (

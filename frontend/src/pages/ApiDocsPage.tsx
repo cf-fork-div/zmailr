@@ -60,7 +60,7 @@ const ApiDocsPage: React.FC = () => {
               <li>{t('apiDocs.auth.userTokenStep3')}</li>
             </ol>
           </div>
-          <p className="text-sm text-muted-foreground">{t('apiDocs.auth.oneTokenLimit')}</p>
+          <p className="text-sm text-muted-foreground">{t('apiDocs.auth.tokenLimit', { max: 3 })}</p>
           <p className="text-sm text-muted-foreground">{t('apiDocs.auth.scopesNote')}</p>
           <p className="text-sm text-muted-foreground">{t('apiDocs.auth.headerNote')}</p>
           <ApiDocCodeBlock>{`Authorization: Bearer <your-api-token>`}</ApiDocCodeBlock>

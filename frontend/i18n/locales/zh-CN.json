@@ -27,7 +27,7 @@
     "tokenCreated": "Token 已创建，请立即复制：",
     "tokenCopyWarning": "此 Token 不会再次显示。",
     "noTokens": "暂无 Token",
-    "tokenLimitOne": "每位用户仅可创建一个 API Token，请先删除现有 Token 后再创建。",
+    "tokenLimitReached": "每位用户最多可创建 {{max}} 个 API Token，请先删除现有 Token 后再创建。",
     "confirmDeleteToken": "确定删除此 Token？",
     "tokenCreateFailed": "创建 Token 失败"
   },
@@ -57,7 +57,8 @@
     "copyUnavailable": "本地未保存 Token 明文，无法一键复制。",
     "recreateToCopy": "删除并重新创建以复制",
     "regenerateToken": "重新生成",
-    "confirmRegenerateToken": "重新生成此 Token？旧 Token 将立即失效。"
+    "confirmRegenerateToken": "重新生成此 Token？旧 Token 将立即失效。",
+    "tokenCount": "{{count}} / {{max}}"
   },
   "send": {
     "title": "发送邮件",
@@ -599,7 +600,7 @@
       "userTokenStep1": "登录 Web 应用。",
       "userTokenStep2": "进入 Dashboard → API Keys 创建 Token：",
       "userTokenStep3": "立即复制 Token（仅显示一次）。",
-      "oneTokenLimit": "每位用户仅可持有一个 API Token，创建新 Token 前请先删除现有 Token。",
+      "tokenLimit": "每位用户最多可持有 {{max}} 个 API Token，达到上限后请先删除现有 Token。",
       "scopesNote": "权限说明：lease（POST /api/lease）、mail（GET /api/mail、列出邮箱、latest-code/link、原始 .eml）、send（POST /api/send）。",
       "headerNote": "每个程序化请求需携带以下 Header：",
       "sessionVsBearerTitle": "会话 vs Bearer",

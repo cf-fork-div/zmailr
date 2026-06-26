@@ -86,6 +86,8 @@ Cookie: zmail_user_session=...
 | `mail` | `GET /api/mail`、`GET /api/mailboxes/*` 等读信接口 |
 | `send` | `POST /api/send` |
 
+- 每位用户最多 **3 个** API Token（可为不同用途分别创建）；达到上限后须先删除现有 Token。
+- 新 Token 格式为 `zmr_` 前缀 + 64 位十六进制随机串（例如 `zmr_a1b2…`）；旧版无前缀 Token 在过期删除前仍可使用。
 - 明文 Token **仅在创建时返回一次**；服务端仅存 SHA-256 哈希。
 - Dashboard 可将明文保存在浏览器 `localStorage`（按用户隔离），便于后续复制脱敏预览；清除浏览器数据会丢失该便利副本。
 - Token 列表含 **`last_used_at`**（Unix 秒，API 使用时最多每小时更新一次）。

@@ -43,7 +43,7 @@
 - **收件箱 / 发件箱**：新建 24 小时临时地址、收信列表、OTP 高亮（OtpBox）、**下载原始 .eml / 复制纯文本**、**附件列表/预览/下载**（Session 鉴权）、Brevo 出站撰写（**纯文本 / 富文本** Tab）、出站附件、发信记录与**详情弹窗**（含失败重发）
 - **邮箱历史**：已过期/历史邮箱列表，支持批量删除
 - **邮件批量删除**：收件箱与发件箱多选删除
-- **API 密钥**：每位用户 1 个 Bearer Token，可选 `lease` / `mail` / `send` scope，含 curl 示例；明文仅创建时展示一次，浏览器可本地保存脱敏预览
+- **API 密钥**：每位用户最多 3 个 Bearer Token（zmr_ + 64 位 hex；旧版无前缀仍可用），可选 `lease` / `mail` / `send` scope，含 curl 示例；明文仅创建时展示一次，浏览器可本地保存脱敏预览
 - **API 调试**：浏览器内调用 Bearer API，查看 JSON 响应与 `x-ratelimit-*` 头
 - **提取规则**：系统内置（只读）+ 用户自定义（按发件人域名优先级匹配），支持备注字段
 - **系统公告**：登录后未读公告弹窗，逐条确认或全部标记已读
@@ -135,7 +135,7 @@
 
 ![Token 创建 — 删除并重新创建后一次性展示明文 Bearer Token](docs/screenshots/api-keys-create.png)
 
-每位用户限 1 个 Bearer Token，可选 `lease` / `mail` / `send` scope，含 curl 示例。
+每位用户最多 3 个 Bearer Token（zmr_ 前缀；旧版无前缀仍可用），可选 `lease` / `mail` / `send` scope，含 curl 示例。
 
 #### API 调试
 

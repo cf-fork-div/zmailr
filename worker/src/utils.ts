@@ -99,13 +99,17 @@ export function generateRandomString(length: number): string {
     return domains[0] || 'example.com';
   }
 
+  /** Prefix for newly generated API tokens (e.g. zmr_a1b2…). */
+  export const API_TOKEN_PREFIX = 'zmr_';
+
   /**
-   * 生成 API Token（64 位 hex）
+   * 生成 API Token（zmr_ + 64 位 hex）
    */
   export function generateApiToken(): string {
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
-    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    return `${API_TOKEN_PREFIX}${hex}`;
   }
 
   /**

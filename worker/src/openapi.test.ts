@@ -34,4 +34,13 @@ describe('OPENAPI_SPEC', () => {
   it('defines bearer security scheme', () => {
     assert.equal(OPENAPI_SPEC.components.securitySchemes.bearerAuth.type, 'http');
   });
+
+  it('documents max 3 user API tokens on create endpoint', () => {
+    const post = OPENAPI_SPEC.paths['/api/user/tokens']?.post;
+    assert.ok(post);
+    assert.match(post!.summary ?? '', /3/);
+    const bad400 = post!.responses?.['400'];
+    assert.ok(bad400);
+    assert.match((bad400 as { description?: string }).description ?? '', /3/);
+  });
 });

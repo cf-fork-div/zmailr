@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { Env, ApiAuthContext, TokenScope, User, Mailbox, Email } from './types';
+import { Env, ApiAuthContext, TokenScope, User, Mailbox, Email, MAX_USER_TOKENS } from './types';
 import { 
   createMailbox, 
   getMailbox,
@@ -645,8 +645,11 @@ app.post('/api/user/tokens', async (c) => {
     return c.json({ success: false, error: '至少选择一个 scope' }, 400);
   }
   const existingCount = await countUserTokens(c.env.DB, user.id);
-  if (existingCount > 0) {
-    return c.json({ success: false, error: '每位用户仅可创建一个 API Token，请先删除现有 Token' }, 400);
+  if (existingCount >= MAX_USER_TOKENS) {
+    return c.json({
+      success: false,
+      error: `每位用户最多可创建 ${MAX_USER_TOKENS} 个 API Token，请先删除现有 Token 后再创建。`,
+    }, 400);
   }
   const token = await createUserToken(c.env.DB, user.id, {
     name: body.name,
