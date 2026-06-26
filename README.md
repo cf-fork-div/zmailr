@@ -28,8 +28,6 @@
 
 ## 项目简介
 
-**zMailR** 是基于 Cloudflare Workers + D1 部署的临时邮箱服务，面向需要**自托管收信/发信**的个人开发者与小团队。Web 端一键生成 24 小时地址并实时收信；API 端通过 Bearer Token 完成「租用邮箱 → 长轮询收信 → 提取验证码 → 可选 Brevo 发信」，定位类似 [MailSink](https://mailsink.dev/docs/) 的 OTP 自动化，但以自托管与出站发信为差异化。
-
 **技术栈**：Cloudflare Workers、D1、Email Routing（入站）、Brevo Transactional API（出站）、React + Vite 前端。
 
 **在线演示**：[https://zmailr.itool.eu.cc/](https://zmailr.itool.eu.cc/) · 演示账号 `guest` / `guest`
