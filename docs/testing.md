@@ -61,7 +61,7 @@
 | 9 | 用户端 · 发信详情弹窗 | Pass | ![发信详情](./screenshots/outbox-sent-detail.png) |
 | 10 | 用户端 · 自定义提取规则 | Pass | ![自定义提取规则](./screenshots/extract-rules-custom.png) |
 | 11 | 用户端 · API 调试 GET /api/user/quota | Pass | ![API 调试响应](./screenshots/api-debug-response.png) |
-| 12 | 公开 API · `GET /api/public/status` 依赖探测 | **Fail** | curl 返回 `500` / `{"success":false,"error":"服务器内部错误"}`；期望 `success: true` 且 `checks.d1`/`checks.r2.ok: true` |
+| 12 | 公开 API · `GET /api/public/status` 依赖探测 | Pass | HTTP 200；`success: true`，`checks.d1`/`checks.r2.ok: true`（修复 commit `4b4fbc5` 后复测） |
 | 13 | 用户端 · 收件箱附件列表与下载 | 待测 | 本次无入站含附件测试邮件；功能已实现，需 Email Routing 投递带附件邮件后复测 |
 | 14 | 用户端 · 失败发信重发 | 待测 | 需 Brevo 失败记录触发；UI 已实现 `SentEmailDetailModal` 重发按钮 |
 | 15 | 匿名 API · 无 Token 拒绝 | Pass | `POST /api/lease`、`GET /api/mail` → HTTP 401 |
@@ -70,7 +70,7 @@
 | 18 | 文档 · `/docs/testing` | Pass | ![测试报告页](./screenshots/docs-testing.png) |
 | 19 | 文档 · `/docs/api-interactive` | Pass | ![API 交互文档](./screenshots/api-interactive.png) |
 | 20 | 管理后台 · 创建并启用公告 | Pass（历史截图） | ![创建公告表单](./screenshots/admin-announcement-create.png)<br>![公告列表](./screenshots/admin-announcements-list.png) |
-| 21 | 管理后台 · 系统健康 + 运营统计 | Fail（API）/ 未复测（UI） | 公开 `GET /api/public/status` 500；仪表盘健康区块依赖同接口，见 [admin-dashboard.png](./screenshots/admin-dashboard.png) 历史截图 |
+| 21 | 管理后台 · 系统健康 + 运营统计 | Pass（API）/ 未复测（UI） | 公开 `GET /api/public/status` 200；仪表盘健康区块依赖同接口，见 [admin-dashboard.png](./screenshots/admin-dashboard.png) 历史截图 |
 | 22 | 管理后台 · 请求监控图表 | Pass（历史截图） | ![限流与请求监控](./screenshots/admin-ratelimit.png) |
 | 23 | 管理后台 · 用户 / 规则 / 设置 / 审计 | Pass（历史截图） | ![用户](./screenshots/admin-users.png) · ![规则](./screenshots/admin-rules.png) · ![系统设置](./screenshots/admin-settings.png) · ![审计](./screenshots/admin-audit.png) |
 | 24 | Ops · `GET /api/health` | Pass | `{"status":"ok","message":"临时邮箱系统API正常运行"}` |
