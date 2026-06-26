@@ -76,6 +76,59 @@ export const OPENAPI_SPEC = {
           unlimited: { type: 'boolean' },
         },
       },
+      SendAttachment: {
+        type: 'object',
+        required: ['name', 'content'],
+        properties: {
+          name: { type: 'string', description: 'Filename' },
+          content: { type: 'string', description: 'Base64-encoded file content' },
+        },
+      },
+      SendEmailRequest: {
+        type: 'object',
+        required: ['to', 'subject'],
+        properties: {
+          to: { type: 'string' },
+          subject: { type: 'string' },
+          text: { type: 'string' },
+          html: { type: 'string' },
+          from: { type: 'string', description: 'Owned mailbox address' },
+          attachments: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/SendAttachment' },
+            description: 'Base64 attachments; total size max 5MB (Brevo only)',
+          },
+        },
+      },
+      SentEmailSummary: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          toEmail: { type: 'string' },
+          subject: { type: 'string' },
+          status: { type: 'string' },
+          createdAt: { type: 'integer' },
+          fromEmail: { type: 'string', nullable: true },
+          attachmentCount: { type: 'integer' },
+          errorMessage: { type: 'string', nullable: true },
+        },
+      },
+      SentEmailDetail: {
+        allOf: [
+          { $ref: '#/components/schemas/SentEmailSummary' },
+          {
+            type: 'object',
+            properties: {
+              bodyText: { type: 'string', nullable: true },
+              bodyHtml: { type: 'string', nullable: true },
+              attachments: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/SendAttachment' },
+              },
+            },
+          },
+        ],
+      },
     },
     parameters: {
       AddressPath: {
@@ -383,17 +436,7 @@ export const OPENAPI_SPEC = {
           required: true,
           content: {
             'application/json': {
-              schema: {
-                type: 'object',
-                required: ['to', 'subject'],
-                properties: {
-                  to: { type: 'string' },
-                  subject: { type: 'string' },
-                  text: { type: 'string' },
-                  html: { type: 'string' },
-                  from: { type: 'string', description: 'Owned mailbox address' },
-                },
-              },
+              schema: { $ref: '#/components/schemas/SendEmailRequest' },
             },
           },
         },
@@ -407,7 +450,22 @@ export const OPENAPI_SPEC = {
         operationId: 'listUserSent',
         security: [{ sessionCookie: [] }],
         parameters: [{ $ref: '#/components/parameters/LimitQuery' }],
-        responses: { '200': { description: 'Sent list' } },
+        responses: {
+          '200': {
+            description: 'Sent list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    emails: { type: 'array', items: { $ref: '#/components/schemas/SentEmailSummary' } },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
       delete: {
         tags: ['User'],
@@ -428,6 +486,48 @@ export const OPENAPI_SPEC = {
           },
         },
         responses: { '200': { description: 'Deleted' } },
+      },
+    },
+    '/api/user/sent/{id}': {
+      get: {
+        tags: ['User'],
+        summary: 'Get sent email detail',
+        operationId: 'getUserSentEmail',
+        security: [{ sessionCookie: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: {
+          '200': {
+            description: 'Sent email detail',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    email: { $ref: '#/components/schemas/SentEmailDetail' },
+                  },
+                },
+              },
+            },
+          },
+          '404': { description: 'Not found' },
+        },
+      },
+    },
+    '/api/user/sent/{id}/resend': {
+      post: {
+        tags: ['User'],
+        summary: 'Resend a failed email',
+        operationId: 'resendUserSentEmail',
+        security: [{ sessionCookie: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: {
+          '200': { description: 'Resent' },
+          '400': { description: 'Not a failed email' },
+          '404': { description: 'Not found' },
+          '429': { description: 'Quota exceeded' },
+          '502': { description: 'Send failed' },
+        },
       },
     },
     '/api/user/emails': {
@@ -694,15 +794,15 @@ export const OPENAPI_SPEC = {
           content: {
             'application/json': {
               schema: {
-                type: 'object',
-                required: ['to', 'subject'],
-                properties: {
-                  to: { type: 'string' },
-                  subject: { type: 'string' },
-                  text: { type: 'string' },
-                  html: { type: 'string' },
-                  from: { type: 'string', description: 'Leased mailbox as sender' },
-                },
+                allOf: [
+                  { $ref: '#/components/schemas/SendEmailRequest' },
+                  {
+                    type: 'object',
+                    properties: {
+                      from: { type: 'string', description: 'Leased mailbox as sender' },
+                    },
+                  },
+                ],
               },
             },
           },

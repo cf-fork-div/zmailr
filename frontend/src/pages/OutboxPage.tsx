@@ -6,6 +6,7 @@ import StatCard from '../components/StatCard';
 import { useAuth } from '../contexts/AuthContext';
 import { MailboxContext } from '../contexts/MailboxContext';
 import ListPagination, { useClientPagination } from '../components/ListPagination';
+import SentEmailDetailModal from '../components/SentEmailDetailModal';
 import { getUserSentEmails, deleteUserSentEmails, SentEmailItem } from '../utils/api';
 import { getDefaultEmailDomain, DEFAULT_EMAIL_DOMAIN } from '../config';
 
@@ -18,6 +19,7 @@ const OutboxPage: React.FC = () => {
   const [defaultDomain, setDefaultDomain] = useState(DEFAULT_EMAIL_DOMAIN);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [detailId, setDetailId] = useState<number | null>(null);
   const { page, setPage, totalPages, pageItems, resetPage } = useClientPagination(sentEmails);
 
   const loadSent = async () => {
@@ -194,11 +196,16 @@ const OutboxPage: React.FC = () => {
             </div>
             <div className="divide-y">
               {pageItems.map((email) => (
-                <div key={email.id} className="px-4 py-3 grid sm:grid-cols-[auto_1fr_2fr_auto] gap-2 items-center text-sm">
+                <div
+                  key={email.id}
+                  className="px-4 py-3 grid sm:grid-cols-[auto_1fr_2fr_auto] gap-2 items-center text-sm cursor-pointer hover:bg-muted/30"
+                  onClick={() => setDetailId(email.id)}
+                >
                   <input
                     type="checkbox"
                     checked={selectedIds.has(email.id)}
                     onChange={() => toggleSelect(email.id)}
+                    onClick={(e) => e.stopPropagation()}
                     className="rounded"
                   />
                   <span className="truncate text-muted-foreground">{email.toEmail}</span>
@@ -208,11 +215,14 @@ const OutboxPage: React.FC = () => {
                       className={`text-xs px-2 py-0.5 rounded-full ${
                         email.status === 'sent'
                           ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                          : 'bg-muted text-muted-foreground'
+                          : 'bg-destructive/10 text-destructive'
                       }`}
                     >
                       {email.status}
                     </span>
+                    {(email.attachmentCount ?? 0) > 0 && (
+                      <i className="fas fa-paperclip text-xs text-muted-foreground" title={t('send.attachments')} />
+                    )}
                     <span className="text-xs text-muted-foreground whitespace-nowrap">{fmtTime(email.createdAt)}</span>
                   </div>
                 </div>
@@ -227,6 +237,17 @@ const OutboxPage: React.FC = () => {
           </>
         )}
       </div>
+
+      {detailId != null && (
+        <SentEmailDetailModal
+          emailId={detailId}
+          onClose={() => setDetailId(null)}
+          onResent={() => {
+            refresh();
+            loadSent();
+          }}
+        />
+      )}
     </div>
   );
 };

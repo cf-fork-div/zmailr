@@ -14,6 +14,7 @@ import {
   UserExtractRule,
   SaveExtractRuleParams,
   SentEmail,
+  SendAttachment,
   AdminStats,
   User,
   UserToken,
@@ -114,6 +115,12 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     await migrateAddColumn(db, 'mailboxes', 'user_id', 'INTEGER');
     await migrateAddColumn(db, 'sent_emails', 'user_id', 'INTEGER');
     await migrateAddColumn(db, 'sent_emails', 'token_id', 'INTEGER');
+    await migrateAddColumn(db, 'sent_emails', 'from_email', 'TEXT');
+    await migrateAddColumn(db, 'sent_emails', 'body_text', 'TEXT');
+    await migrateAddColumn(db, 'sent_emails', 'body_html', 'TEXT');
+    await migrateAddColumn(db, 'sent_emails', 'error_message', 'TEXT');
+    await migrateAddColumn(db, 'sent_emails', 'attachment_count', 'INTEGER DEFAULT 0');
+    await migrateAddColumn(db, 'sent_emails', 'attachments_json', 'TEXT');
     await migrateAddColumn(db, 'extract_rules', 'user_id', 'INTEGER');
     await migrateAddColumn(db, 'extract_rules', 'remark', 'TEXT');
     await migrateAddColumn(db, 'users', 'rate_limit_per_min', 'INTEGER DEFAULT 60');
@@ -1143,50 +1150,13 @@ export async function deleteAnyUserExtractRule(db: D1Database, id: number): Prom
 
 // ─── Sent Emails ─────────────────────────────────────────────
 
-export async function saveSentEmail(
-  db: D1Database,
-  toEmail: string,
-  subject: string,
-  status: string = 'sent',
-  userId?: number | null,
-  tokenId?: number | null
-): Promise<SentEmail> {
-  const result = await db.prepare(
-    `INSERT INTO sent_emails (to_email, subject, status, user_id, token_id) VALUES (?, ?, ?, ?, ?)
-     RETURNING id, to_email, subject, status, created_at, user_id, token_id`
-  ).bind(toEmail, subject, status, userId ?? null, tokenId ?? null).first();
-  return {
-    id: result!.id as number,
-    toEmail: result!.to_email as string,
-    subject: result!.subject as string,
-    status: result!.status as string,
-    createdAt: result!.created_at as number,
-    userId: (result!.user_id as number | null) ?? null,
-    tokenId: (result!.token_id as number | null) ?? null,
-  };
-}
+const SENT_EMAIL_LIST_COLUMNS = `id, to_email, subject, status, created_at, user_id, token_id,
+  from_email, attachment_count, error_message`;
 
-export async function listSentEmails(db: D1Database, limit = 100): Promise<SentEmail[]> {
-  const results = await db.prepare(
-    `SELECT id, to_email, subject, status, created_at FROM sent_emails ORDER BY created_at DESC LIMIT ?`
-  ).bind(limit).all();
-  if (!results.results) return [];
-  return results.results.map(row => ({
-    id: row.id as number,
-    toEmail: row.to_email as string,
-    subject: row.subject as string,
-    status: row.status as string,
-    createdAt: row.created_at as number,
-  }));
-}
+const SENT_EMAIL_DETAIL_COLUMNS = `${SENT_EMAIL_LIST_COLUMNS}, body_text, body_html, attachments_json`;
 
-export async function listUserSentEmails(db: D1Database, userId: number, limit = 50): Promise<SentEmail[]> {
-  const results = await db.prepare(
-    `SELECT id, to_email, subject, status, created_at, user_id, token_id
-     FROM sent_emails WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`
-  ).bind(userId, limit).all();
-  if (!results.results) return [];
-  return results.results.map(row => ({
+function mapSentEmailRow(row: Record<string, unknown>, includeDetail = false): SentEmail {
+  const email: SentEmail = {
     id: row.id as number,
     toEmail: row.to_email as string,
     subject: row.subject as string,
@@ -1194,7 +1164,90 @@ export async function listUserSentEmails(db: D1Database, userId: number, limit =
     createdAt: row.created_at as number,
     userId: (row.user_id as number | null) ?? null,
     tokenId: (row.token_id as number | null) ?? null,
-  }));
+    fromEmail: (row.from_email as string | null) ?? null,
+    attachmentCount: (row.attachment_count as number | null) ?? 0,
+    errorMessage: (row.error_message as string | null) ?? null,
+  };
+  if (includeDetail) {
+    email.bodyText = (row.body_text as string | null) ?? null;
+    email.bodyHtml = (row.body_html as string | null) ?? null;
+    const attachmentsJson = row.attachments_json as string | null;
+    if (attachmentsJson) {
+      try {
+        email.attachments = JSON.parse(attachmentsJson) as SentEmail['attachments'];
+      } catch {
+        email.attachments = [];
+      }
+    }
+  }
+  return email;
+}
+
+export interface SaveSentEmailParams {
+  toEmail: string;
+  subject: string;
+  status?: string;
+  userId?: number | null;
+  tokenId?: number | null;
+  fromEmail?: string | null;
+  bodyText?: string | null;
+  bodyHtml?: string | null;
+  errorMessage?: string | null;
+  attachments?: SendAttachment[] | null;
+}
+
+export async function saveSentEmail(db: D1Database, params: SaveSentEmailParams): Promise<SentEmail> {
+  const attachments = params.attachments ?? [];
+  const attachmentsJson = attachments.length > 0 ? JSON.stringify(attachments) : null;
+  const result = await db.prepare(
+    `INSERT INTO sent_emails (
+       to_email, subject, status, user_id, token_id, from_email, body_text, body_html,
+       error_message, attachment_count, attachments_json
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     RETURNING ${SENT_EMAIL_DETAIL_COLUMNS}`
+  ).bind(
+    params.toEmail,
+    params.subject,
+    params.status ?? 'sent',
+    params.userId ?? null,
+    params.tokenId ?? null,
+    params.fromEmail ?? null,
+    params.bodyText ?? null,
+    params.bodyHtml ?? null,
+    params.errorMessage ?? null,
+    attachments.length,
+    attachmentsJson
+  ).first();
+  return mapSentEmailRow(result as Record<string, unknown>, true);
+}
+
+export async function listSentEmails(db: D1Database, limit = 100): Promise<SentEmail[]> {
+  const results = await db.prepare(
+    `SELECT ${SENT_EMAIL_LIST_COLUMNS} FROM sent_emails ORDER BY created_at DESC LIMIT ?`
+  ).bind(limit).all();
+  if (!results.results) return [];
+  return results.results.map(row => mapSentEmailRow(row as Record<string, unknown>));
+}
+
+export async function listUserSentEmails(db: D1Database, userId: number, limit = 50): Promise<SentEmail[]> {
+  const results = await db.prepare(
+    `SELECT ${SENT_EMAIL_LIST_COLUMNS}
+     FROM sent_emails WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`
+  ).bind(userId, limit).all();
+  if (!results.results) return [];
+  return results.results.map(row => mapSentEmailRow(row as Record<string, unknown>));
+}
+
+export async function getUserSentEmailById(
+  db: D1Database,
+  userId: number,
+  id: number
+): Promise<SentEmail | null> {
+  const row = await db.prepare(
+    `SELECT ${SENT_EMAIL_DETAIL_COLUMNS} FROM sent_emails WHERE user_id = ? AND id = ?`
+  ).bind(userId, id).first();
+  if (!row) return null;
+  return mapSentEmailRow(row as Record<string, unknown>, true);
 }
 
 // ─── Admin Stats & Polling ───────────────────────────────────

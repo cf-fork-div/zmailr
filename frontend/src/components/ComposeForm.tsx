@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { sendUserEmail } from '../utils/api';
+import { sendUserEmail, SendAttachmentItem } from '../utils/api';
+
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
 interface ComposeFormProps {
   defaultFrom?: string;
@@ -8,12 +10,28 @@ interface ComposeFormProps {
   className?: string;
 }
 
+const fileToBase64 = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.includes(',') ? result.split(',')[1] : result;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
 const ComposeForm: React.FC<ComposeFormProps> = ({ defaultFrom, onSent, className = '' }) => {
   const { t } = useTranslation();
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
   const [text, setText] = useState('');
+  const [html, setHtml] = useState('');
+  const [bodyMode, setBodyMode] = useState<'text' | 'html'>('text');
   const [from, setFrom] = useState(defaultFrom || '');
+  const [attachments, setAttachments] = useState<SendAttachmentItem[]>([]);
+  const [attachmentBytes, setAttachmentBytes] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -22,22 +40,65 @@ const ComposeForm: React.FC<ComposeFormProps> = ({ defaultFrom, onSent, classNam
     if (defaultFrom) setFrom(defaultFrom);
   }, [defaultFrom]);
 
+  const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setError('');
+
+    let nextBytes = attachmentBytes;
+    const nextAttachments = [...attachments];
+
+    for (const file of Array.from(files)) {
+      if (nextBytes + file.size > MAX_ATTACHMENT_BYTES) {
+        setError(t('send.attachmentSizeLimit'));
+        break;
+      }
+      const content = await fileToBase64(file);
+      nextAttachments.push({ name: file.name, content });
+      nextBytes += file.size;
+    }
+
+    setAttachments(nextAttachments);
+    setAttachmentBytes(nextBytes);
+    e.target.value = '';
+  };
+
+  const removeAttachment = (index: number) => {
+    const removed = attachments[index];
+    const approxBytes = Math.floor((removed.content.length * 3) / 4);
+    setAttachments(attachments.filter((_, i) => i !== index));
+    setAttachmentBytes(Math.max(0, attachmentBytes - approxBytes));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess(false);
+
+    const bodyText = bodyMode === 'text' ? text : undefined;
+    const bodyHtml = bodyMode === 'html' ? html : undefined;
+    if (!bodyText && !bodyHtml) {
+      setError(t('send.bodyRequired'));
+      return;
+    }
+
     setLoading(true);
     const result = await sendUserEmail({
       to,
       subject,
-      text,
+      text: bodyText,
+      html: bodyHtml,
       from: from || undefined,
+      attachments: attachments.length > 0 ? attachments : undefined,
     });
     setLoading(false);
     if (result.success) {
       setTo('');
       setSubject('');
       setText('');
+      setHtml('');
+      setAttachments([]);
+      setAttachmentBytes(0);
       setSuccess(true);
       onSent?.();
     } else {
@@ -80,14 +141,70 @@ const ComposeForm: React.FC<ComposeFormProps> = ({ defaultFrom, onSent, classNam
         />
       </div>
       <div>
-        <label className="text-sm font-medium">{t('send.body')}</label>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={5}
-          className="w-full px-3 py-2 min-h-10 border rounded-md bg-background text-sm mt-1"
-          required
+        <div className="flex items-center gap-2 mb-1">
+          <label className="text-sm font-medium">{t('send.body')}</label>
+          <div className="flex rounded-md border overflow-hidden text-xs">
+            <button
+              type="button"
+              onClick={() => setBodyMode('text')}
+              className={`px-3 py-1 ${bodyMode === 'text' ? 'bg-primary text-primary-foreground' : 'bg-background'}`}
+            >
+              {t('send.bodyText')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setBodyMode('html')}
+              className={`px-3 py-1 ${bodyMode === 'html' ? 'bg-primary text-primary-foreground' : 'bg-background'}`}
+            >
+              {t('send.bodyHtml')}
+            </button>
+          </div>
+        </div>
+        {bodyMode === 'text' ? (
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={5}
+            className="w-full px-3 py-2 min-h-10 border rounded-md bg-background text-sm"
+            required
+          />
+        ) : (
+          <textarea
+            value={html}
+            onChange={(e) => setHtml(e.target.value)}
+            rows={5}
+            placeholder="<p>...</p>"
+            className="w-full px-3 py-2 min-h-10 border rounded-md bg-background text-sm font-mono"
+            required
+          />
+        )}
+      </div>
+      <div>
+        <label className="text-sm font-medium">{t('send.attachments')}</label>
+        <input
+          type="file"
+          multiple
+          onChange={handleFiles}
+          className="w-full text-sm mt-1 file:mr-3 file:px-3 file:py-1.5 file:rounded-md file:border-0 file:bg-muted file:text-sm"
         />
+        <p className="text-xs text-muted-foreground mt-1">{t('send.attachmentHint')}</p>
+        {attachments.length > 0 && (
+          <ul className="mt-2 space-y-1">
+            {attachments.map((a, i) => (
+              <li key={`${a.name}-${i}`} className="flex items-center justify-between text-sm bg-muted/40 px-2 py-1 rounded">
+                <span className="truncate">{a.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(i)}
+                  className="text-muted-foreground hover:text-destructive ml-2"
+                  aria-label={t('send.removeAttachment')}
+                >
+                  <i className="fas fa-times" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       <button
         type="submit"

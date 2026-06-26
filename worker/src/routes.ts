@@ -26,6 +26,7 @@ import {
   updateUserExtractRule,
   deleteUserExtractRule,
   listUserSentEmails,
+  getUserSentEmailById,
   listUserTokens,
   countUserTokens,
   createUserToken,
@@ -61,7 +62,7 @@ import {
   createUserSessionCookie,
   clearUserSessionCookie,
 } from './auth';
-import { sendMail } from './sender';
+import { sendMail, validateSendAttachments } from './sender';
 import { extractLink } from './extractor';
 import { isAdminRequest, isLegacyAdminRequest, stripAdminPrefix } from './admin-path';
 import { createAdminApp } from './admin-routes';
@@ -801,6 +802,65 @@ app.get('/api/user/sent', async (c) => {
   return c.json({ success: true, emails });
 });
 
+app.get('/api/user/sent/:id', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const id = parseInt(c.req.param('id'), 10);
+  if (Number.isNaN(id)) {
+    return c.json({ success: false, error: '无效的 id' }, 400);
+  }
+  const email = await getUserSentEmailById(c.env.DB, user.id, id);
+  if (!email) {
+    return c.json({ success: false, error: '记录不存在' }, 404);
+  }
+  return c.json({ success: true, email });
+});
+
+app.post('/api/user/sent/:id/resend', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+
+  const id = parseInt(c.req.param('id'), 10);
+  if (Number.isNaN(id)) {
+    return c.json({ success: false, error: '无效的 id' }, 400);
+  }
+
+  const record = await getUserSentEmailById(c.env.DB, user.id, id);
+  if (!record) {
+    return c.json({ success: false, error: '记录不存在' }, 404);
+  }
+  if (record.status === 'sent') {
+    return c.json({ success: false, error: '仅失败邮件可重发' }, 400);
+  }
+  if (!record.bodyText && !record.bodyHtml) {
+    return c.json({ success: false, error: '缺少邮件正文，无法重发' }, 400);
+  }
+
+  const quotaCheck = await checkSendQuota(c.env.DB, user.id, user.dailySendQuota);
+  if (!quotaCheck.ok) {
+    return c.json({ success: false, error: quotaCheck.error }, 429);
+  }
+
+  const result = await sendMail(c.env.DB, c.env, {
+    to: record.toEmail,
+    subject: record.subject,
+    text: record.bodyText ?? undefined,
+    html: record.bodyHtml ?? undefined,
+    from: record.fromEmail ?? undefined,
+    userId: user.id,
+    attachments: record.attachments,
+  });
+
+  if (!result.success) {
+    return c.json({ success: false, error: result.error }, 502);
+  }
+
+  await incrementSendUsage(c.env.DB, user.id);
+  return c.json({ success: true, sentEmailId: result.sentEmailId });
+});
+
 app.delete('/api/user/sent', async (c) => {
   const authErr = await requireUserSession(c);
   if (authErr) return authErr;
@@ -991,6 +1051,11 @@ app.post('/api/user/send', async (c) => {
       return c.json({ success: false, error: fromResult.error }, 400);
     }
 
+    const attachmentResult = validateSendAttachments(body.attachments);
+    if (!attachmentResult.ok) {
+      return c.json({ success: false, error: attachmentResult.error }, 400);
+    }
+
     const result = await sendMail(c.env.DB, c.env, {
       to: body.to,
       subject: body.subject,
@@ -998,6 +1063,7 @@ app.post('/api/user/send', async (c) => {
       html: body.html,
       from: fromResult.fromEmail,
       userId: user.id,
+      attachments: attachmentResult.attachments,
     });
 
     if (!result.success) {
@@ -1240,6 +1306,11 @@ app.post('/api/send', async (c) => {
       fromEmail = validated.fromEmail;
     }
 
+    const attachmentResult = validateSendAttachments(body.attachments);
+    if (!attachmentResult.ok) {
+      return c.json({ success: false, error: attachmentResult.error }, 400);
+    }
+
     const result = await sendMail(c.env.DB, c.env, {
       to: body.to,
       subject: body.subject,
@@ -1248,6 +1319,7 @@ app.post('/api/send', async (c) => {
       from: fromEmail,
       userId: auth.userId ?? null,
       tokenId: auth.tokenId ?? null,
+      attachments: attachmentResult.attachments,
     });
 
     if (!result.success) {

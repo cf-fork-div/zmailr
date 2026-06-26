@@ -13,6 +13,8 @@ describe('OPENAPI_SPEC', () => {
       '/api/user/mailboxes',
       '/api/user/tokens',
       '/api/user/send',
+      '/api/user/sent/{id}',
+      '/api/user/sent/{id}/resend',
       '/api/user/extract-rules',
       '/api/user/announcements/unread',
       '/api/lease',

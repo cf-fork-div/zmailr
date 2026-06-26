@@ -176,6 +176,11 @@ export interface SaveExtractRuleParams {
 }
 
 // 发信审计
+export interface SendAttachment {
+  name: string;
+  content: string;
+}
+
 export interface SentEmail {
   id: number;
   toEmail: string;
@@ -184,6 +189,12 @@ export interface SentEmail {
   createdAt: number;
   userId?: number | null;
   tokenId?: number | null;
+  fromEmail?: string | null;
+  bodyText?: string | null;
+  bodyHtml?: string | null;
+  errorMessage?: string | null;
+  attachmentCount?: number;
+  attachments?: SendAttachment[];
 }
 
 // 系统公告

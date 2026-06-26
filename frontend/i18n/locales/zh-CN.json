@@ -66,9 +66,21 @@
     "fromPlaceholder": "留空则使用 no-reply@域名",
     "subject": "主题",
     "body": "正文",
+    "bodyText": "纯文本",
+    "bodyHtml": "HTML",
+    "bodyRequired": "请填写邮件正文",
+    "attachments": "附件",
+    "attachmentHint": "支持多文件，总大小不超过 5MB（需 Brevo 发信）",
+    "attachmentSizeLimit": "附件总大小不能超过 5MB",
+    "removeAttachment": "移除附件",
     "submit": "发送",
     "failed": "发送失败",
-    "success": "邮件已发送"
+    "success": "邮件已发送",
+    "status": "状态",
+    "detailTitle": "发信详情",
+    "detailLoadFailed": "加载详情失败",
+    "resend": "重新发送",
+    "resendFailed": "重发失败"
   },
   "dashboard": {
     "maintenanceDefault": "系统维护中，部分功能可能暂不可用。",

@@ -347,8 +347,10 @@ export const deleteUserToken = async (id: number) => {
 export const sendUserEmail = async (params: {
   to: string;
   subject: string;
-  text: string;
+  text?: string;
+  html?: string;
   from?: string;
+  attachments?: { name: string; content: string }[];
 }) => {
   try {
     const response = await fetch(apiUrl('/api/user/send'), {
@@ -365,12 +367,26 @@ export const sendUserEmail = async (params: {
   }
 };
 
+export interface SendAttachmentItem {
+  name: string;
+  content: string;
+}
+
 export interface SentEmailItem {
   id: number;
   toEmail: string;
   subject: string;
   status: string;
   createdAt: number;
+  fromEmail?: string | null;
+  attachmentCount?: number;
+  errorMessage?: string | null;
+}
+
+export interface SentEmailDetail extends SentEmailItem {
+  bodyText?: string | null;
+  bodyHtml?: string | null;
+  attachments?: SendAttachmentItem[];
 }
 
 export const getUserSentEmails = async (limit = 50) => {
@@ -379,6 +395,32 @@ export const getUserSentEmails = async (limit = 50) => {
     if (response.status === 401) return { success: false as const, error: 'Unauthorized' };
     const data = await response.json();
     if (data.success) return { success: true as const, emails: data.emails as SentEmailItem[] };
+    return { success: false as const, error: data.error };
+  } catch {
+    return { success: false as const, error: 'Network error' };
+  }
+};
+
+export const getUserSentEmailDetail = async (id: number) => {
+  try {
+    const response = await fetch(apiUrl(`/api/user/sent/${id}`), fetchOpts);
+    if (response.status === 401) return { success: false as const, error: 'Unauthorized' };
+    const data = await response.json();
+    if (data.success) return { success: true as const, email: data.email as SentEmailDetail };
+    return { success: false as const, error: data.error };
+  } catch {
+    return { success: false as const, error: 'Network error' };
+  }
+};
+
+export const resendUserSentEmail = async (id: number) => {
+  try {
+    const response = await fetch(apiUrl(`/api/user/sent/${id}/resend`), {
+      method: 'POST',
+      credentials: 'include',
+    });
+    const data = await response.json();
+    if (data.success) return { success: true as const, sentEmailId: data.sentEmailId as number };
     return { success: false as const, error: data.error };
   } catch {
     return { success: false as const, error: 'Network error' };
