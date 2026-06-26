@@ -83,6 +83,7 @@ import { getOpenApiJson } from './openapi';
 import { resolveAttachmentBytes } from './r2-attachments';
 import { matchCorsOrigin } from './cors';
 import { apiInternalError } from './http-response';
+import { runHealthChecks } from './health';
 
 type AppVariables = {
   auth?: ApiAuthContext;
