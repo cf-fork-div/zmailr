@@ -13,9 +13,6 @@ export default defineConfig({
   },
   lastUpdated: true,
   appearance: true,
-  // Links to repo root (README, packages/mcp) are intentional in source markdown
-  ignoreDeadLinks: [/\.\.\/README/, /\.\.\/packages\/mcp\/README/],
-
   themeConfig: {
     siteTitle: 'zMailR',
 

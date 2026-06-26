@@ -1,6 +1,6 @@
 # zMailR 与 MailSink 功能对照
 
-> **文档导航** → [README.md](./README.md) · **API 端点速查** → [api.md](./api.md)
+> **文档导航** → [文档首页](./) · **API 端点速查** → [api.md](./api.md)
 
 > 参考：[MailSink 官方文档](https://mailsink.dev/docs/)  
 > zMailR 愿景：实现 MailSink 类「收信 + 验证码提取」能力，但以**开源可自托管**为目标，并以**出站发信**作为差异化能力。
@@ -189,11 +189,11 @@ POST /api/send            （可选）以租用的地址发信
 
 ## 相关文档
 
-- [文档首页](./README.md)
+- [文档首页](./)
 - [API 快速参考](./api.md)
 - [管理后台指南](./admin-guide.md)
 - [部署指南](./deploy.md)
 - [Brevo 发信配置](./brevo-setup.md)
 - [用户认证与 Token](./user-auth.md)
 - [MCP 集成](./mcp.md)
-- [项目 README](../README.md)
+- [项目 README](https://github.com/jia0327/zmailr/blob/main/README.md)

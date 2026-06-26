@@ -1,6 +1,6 @@
 # zMailR 生产环境 E2E 测试报告
 
-> **文档导航** → [README.md](./README.md)
+> **文档导航** → [文档首页](./)
 
 **测试站点**：https://zmailr.itool.eu.cc/  
 **测试日期**：2026-06-26  
@@ -65,14 +65,14 @@ docs/screenshots/outbox-sent.png
 docs/screenshots/outbox.png
 ```
 
-（另有历史管理后台截图：`admin-login.png`、`admin-dashboard.png`、`admin-users.png`、`admin-rules.png`、`admin-ratelimit.png`、`admin-audit.png` 等，见 [README](../README.md)。）
+（另有历史管理后台截图：`admin-login.png`、`admin-dashboard.png`、`admin-users.png`、`admin-rules.png`、`admin-ratelimit.png`、`admin-audit.png` 等，见 [项目 README](https://github.com/jia0327/zmailr/blob/main/README.md)。）
 
 ## 相关文档
 
-- [文档首页](./README.md)
+- [文档首页](./)
 - [API 快速参考](./api.md)
 - [部署指南](./deploy.md)
 - [D1 备份](./backup.md)
 - [用户认证与 API Token](./user-auth.md)
 - [MCP 集成](./mcp.md)
-- [项目 README](../README.md)
+- [项目 README](https://github.com/jia0327/zmailr/blob/main/README.md)

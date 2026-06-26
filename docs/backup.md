@@ -1,6 +1,6 @@
 # D1 数据库备份
 
-> **文档导航** → [README.md](./README.md) · **部署** → [deploy.md](./deploy.md)
+> **文档导航** → [文档首页](./) · **部署** → [deploy.md](./deploy.md)
 
 本文说明如何将 zMailR 的 **D1 数据库**定期导出为 SQL，并上传到 **R2**（与附件共用 bucket `zmailr-attachments`，路径前缀 `backups/d1/`），便于自托管运维与灾难恢复。
 
