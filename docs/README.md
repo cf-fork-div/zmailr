@@ -87,11 +87,9 @@ Authorization: Bearer YOUR_TOKEN
 
 ### MCP
 
-```bash
-npx -y @zmailr/mcp
-```
+工具：`lease_mailbox`、`wait_for_mail`、`get_latest_code`、`send_email`、`get_quota`。环境变量 `ZMAILR_BASE_URL`（演示站为 `https://zmailr.itool.eu.cc`）、`ZMAILR_TOKEN` → [MCP 集成指南](./mcp.md)
 
-工具：`lease_mailbox`、`wait_for_mail`、`get_latest_code`、`send_email`、`get_quota`。环境变量 `ZMAILR_BASE_URL`、`ZMAILR_TOKEN` → [MCP 集成指南](./mcp.md)
+> `@zmailr/mcp` 尚未发布到 npm；配置方式见 MCP 文档中的「本地 monorepo 开发」。
 
 ### 速率限制
 

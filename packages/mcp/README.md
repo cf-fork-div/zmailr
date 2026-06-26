@@ -21,9 +21,15 @@ Chinese docs: [docs/mcp.md](../../docs/mcp.md) · [docs/README.md](../../docs/RE
 | `ZMAILR_BASE_URL` | Yes | Deployment base URL (e.g. `https://zmailr.example.com`) |
 | `ZMAILR_TOKEN` | Yes | Bearer API token from Dashboard → API Keys |
 
+## npm publish status
+
+As of 2026-06, **`@zmailr/mcp` is not published** to the npm registry. Use the [local monorepo configuration](#local-monorepo-development) below until it is published.
+
+Demo site `ZMAILR_BASE_URL`: `https://zmailr.itool.eu.cc`
+
 ## Cursor MCP configuration
 
-Add to `.cursor/mcp.json` (or Cursor Settings → MCP):
+Add to `.cursor/mcp.json` (or Cursor Settings → MCP). The `npx` example below applies **after npm publish**; until then use local monorepo development.
 
 ```json
 {
@@ -32,7 +38,7 @@ Add to `.cursor/mcp.json` (or Cursor Settings → MCP):
       "command": "npx",
       "args": ["-y", "@zmailr/mcp"],
       "env": {
-        "ZMAILR_BASE_URL": "https://your-zmailr-domain.com",
+        "ZMAILR_BASE_URL": "https://zmailr.itool.eu.cc",
         "ZMAILR_TOKEN": "your-bearer-token"
       }
     }
@@ -67,6 +73,8 @@ Build first: `pnpm --filter @zmailr/mcp run build`
 - `get_quota` → any user token scope
 
 ## Install
+
+After npm publish:
 
 ```bash
 npm install -g @zmailr/mcp

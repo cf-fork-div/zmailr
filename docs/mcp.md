@@ -1,9 +1,11 @@
 # MCP 集成指南
 
-> **文档导航** → [文档首页](./) · **API 参考** → [api.md](./api.md)
+> **文档导航** → [文档首页](./) · **API 参考** → [API 速通](./api.md)
 
 [zMailR](https://github.com/jia0327/zmailr) 提供 npm 包 **`@zmailr/mcp`**，作为 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) 服务器，供 Cursor、Claude Desktop 等 AI 助手调用临时邮箱与 OTP 自动化能力。
-源码与英文 README 见 [packages/mcp](https://github.com/jia0327/zmailr/blob/main/packages/mcp/README.md)。
+源码与英文 README 见 [packages/mcp README](https://github.com/jia0327/zmailr/blob/main/packages/mcp/README.md)。
+
+> **npm 发布状态**：截至 2026-06，`@zmailr/mcp` **尚未发布**到 [npm registry](https://www.npmjs.com/package/@zmailr/mcp)。发布前请使用下方「[本地 monorepo 开发](#本地-monorepo-开发)」配置；`npx @zmailr/mcp` 与 `npm install -g @zmailr/mcp` 暂不可用。
 
 ---
 
@@ -26,6 +28,8 @@
 | `ZMAILR_BASE_URL` | 是 | 部署实例根 URL（如 `https://zmailr.example.com`，无尾部 `/`） |
 | `ZMAILR_TOKEN` | 是 | Dashboard → **API 密钥** 创建的 Bearer Token |
 
+[演示站](https://zmailr.itool.eu.cc/) 的 `ZMAILR_BASE_URL` 为 `https://zmailr.itool.eu.cc`（账号 `guest` / `guest`，需在 Dashboard 创建 API Token）。
+
 ---
 
 ## Token Scope 对应关系
@@ -37,13 +41,13 @@
 | `send_email` | `send` |
 | `get_quota` | 任意用户 Token scope 均可 |
 
-所有 API 均需认证，**不支持匿名调用**。详见 [user-auth.md](./user-auth.md)。
+所有 API 均需认证，**不支持匿名调用**。详见 [用户认证与 Token](./user-auth.md)。
 
 ---
 
 ## Cursor 配置
 
-在 `.cursor/mcp.json` 或 **Cursor Settings → MCP** 中添加：
+在 `.cursor/mcp.json` 或 **Cursor Settings → MCP** 中添加。`ZMAILR_BASE_URL` 填你的实例地址；使用 [演示站](https://zmailr.itool.eu.cc/) 时可填 `https://zmailr.itool.eu.cc`：
 
 ```json
 {
@@ -52,7 +56,7 @@
       "command": "npx",
       "args": ["-y", "@zmailr/mcp"],
       "env": {
-        "ZMAILR_BASE_URL": "https://your-zmailr-domain.com",
+        "ZMAILR_BASE_URL": "https://zmailr.itool.eu.cc",
         "ZMAILR_TOKEN": "your-bearer-token"
       }
     }
@@ -60,9 +64,11 @@
 }
 ```
 
+> 上例 `command`/`args` 在 npm 包发布后生效；发布前请改用下方「本地 monorepo 开发」配置。
+
 ### 本地 monorepo 开发
 
-先构建：`pnpm --filter @zmailr/mcp run build`
+克隆仓库后，先构建：`pnpm --filter @zmailr/mcp run build`
 
 ```json
 {
@@ -71,7 +77,7 @@
       "command": "node",
       "args": ["packages/mcp/dist/index.js"],
       "env": {
-        "ZMAILR_BASE_URL": "http://localhost:8787",
+        "ZMAILR_BASE_URL": "https://zmailr.itool.eu.cc",
         "ZMAILR_TOKEN": "your-token"
       }
     }
@@ -79,9 +85,13 @@
 }
 ```
 
+本地 Worker 开发时可将 `ZMAILR_BASE_URL` 设为 `http://localhost:8787`。
+
 ---
 
 ## 安装方式
+
+npm 包发布后可用：
 
 ```bash
 npm install -g @zmailr/mcp
@@ -97,7 +107,7 @@ npm install -g @zmailr/mcp
 3. 在目标站点使用该地址注册或验证。
 4. 调用 `wait_for_mail` 或 `get_latest_code` 获取 OTP。
 
-与 MailSink MCP 的对照见 [mailsink-comparison.md](./mailsink-comparison.md)。
+与 MailSink MCP 的对照见 [与 MailSink 对照](./mailsink-comparison.md)。
 
 ---
 
@@ -106,9 +116,9 @@ npm install -g @zmailr/mcp
 | 文档 | 说明 |
 |------|------|
 | [文档首页](./) | 文档分类导航 |
-| [api.md](./api.md) | API 端点速查 |
-| [user-auth.md](./user-auth.md) | 用户认证、Token scope、速率限制 |
-| [deploy.md](./deploy.md) | 自托管部署 |
-| [mailsink-comparison.md](./mailsink-comparison.md) | 与 MailSink MCP 对照 |
+| [API 速通](./api.md) | API 端点速查 |
+| [用户认证与 Token](./user-auth.md) | 用户认证、Token scope、速率限制 |
+| [自托管部署](./deploy.md) | 自托管部署 |
+| [与 MailSink 对照](./mailsink-comparison.md) | 与 MailSink MCP 对照 |
 | [项目 README](https://github.com/jia0327/zmailr/blob/main/README.md) | 项目简介 |
 | [packages/mcp README](https://github.com/jia0327/zmailr/blob/main/packages/mcp/README.md) | 包 README（英文） |
