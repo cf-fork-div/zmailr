@@ -53,15 +53,27 @@ Legacy **无配额 API Token** 仍可通过管理 API（`GET/POST/DELETE /{ADMIN
 
 ---
 
-## 限流监控
+## 请求监控
 
-**限流监控** 标签展示：
+**请求监控** 标签展示：
+
+### API 请求概览（全部状态码）
+
+- 今日总请求、2xx / 4xx / 5xx 汇总
+- 各状态码分布（200、401、403、404、429、500 等）
+- Top 10 路由（按请求量，路径中的 ID/邮箱地址已归一化）
+
+数据来自 D1 表 `api_request_stats`，在 `/api/*` 与管理后台 API 响应后异步写入；按 UTC 日聚合；**保留 7 天**（每小时 Cron 清理）。
+
+### 429 限流详情
 
 - 今日触发 **429** 的总次数
 - 今日 Top 10 IP（按 429 次数）
 - 今日 Top 10 用户（按 429 次数）
 
 数据来自 D1 表 `rate_limit_hits`，每次 API 返回 429 时写入；**保留约 7 天**后自动清理。
+
+管理 API：`GET {ADMIN_PATH}/api/request-stats`、`GET {ADMIN_PATH}/api/rate-limit-stats`
 
 ---
 

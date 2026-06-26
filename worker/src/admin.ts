@@ -88,7 +88,7 @@ td code{font-size:.75rem;background:#0f172a;padding:2px 6px;border-radius:4px;wo
     <div class="tab" data-tab="users" onclick="switchTab('users')">用户</div>
     <div class="tab" data-tab="announcements" onclick="switchTab('announcements')">公告</div>
     <div class="tab" data-tab="rules" onclick="switchTab('rules')">提取规则</div>
-    <div class="tab" data-tab="ratelimit" onclick="switchTab('ratelimit')">限流监控</div>
+    <div class="tab" data-tab="ratelimit" onclick="switchTab('ratelimit')">请求监控</div>
     <div class="tab" data-tab="settings" onclick="switchTab('settings')">系统设置</div>
     <div class="tab" data-tab="audit" onclick="switchTab('audit')">审计日志</div>
   </div>
@@ -132,6 +132,20 @@ td code{font-size:.75rem;background:#0f172a;padding:2px 6px;border-radius:4px;wo
     <table><thead><tr><th>ID</th><th>用户名</th><th>域名</th><th>正则</th><th>优先级</th><th>状态</th><th>备注</th><th>操作</th></tr></thead><tbody id="userRulesBody"></tbody></table>
   </div>
   <div id="panel-ratelimit" class="panel">
+    <h3 class="section-title">今日 API 请求概览</h3>
+    <p class="section-desc">统计 /api/* 与管理后台 API 响应状态码（UTC 日）</p>
+    <div class="stats" id="requestStatsGrid"></div>
+    <div class="grid-2">
+      <div class="card">
+        <h4>状态码分布</h4>
+        <table><thead><tr><th>状态码</th><th>次数</th><th>占比</th></tr></thead><tbody id="statusCodeBody"></tbody></table>
+      </div>
+      <div class="card">
+        <h4>Top 10 路由（按请求量）</h4>
+        <table><thead><tr><th>路由</th><th>次数</th></tr></thead><tbody id="topPathsBody"></tbody></table>
+      </div>
+    </div>
+    <h3 class="section-title" style="margin-top:24px">429 限流详情</h3>
     <div class="stats" id="rateLimitStatsGrid"></div>
     <div class="grid-2">
       <div class="card">
@@ -143,7 +157,7 @@ td code{font-size:.75rem;background:#0f172a;padding:2px 6px;border-radius:4px;wo
         <table><thead><tr><th>用户</th><th>次数</th></tr></thead><tbody id="topUsersBody"></tbody></table>
       </div>
     </div>
-    <p class="hint">429 事件保留 7 天；每次触发限流时写入 D1 rate_limit_hits 表</p>
+    <p class="hint">请求统计保留 7 天（D1 api_request_stats）；429 明细保留 7 天（rate_limit_hits）。每小时 Cron 清理过期数据。</p>
   </div>
   <div id="panel-settings" class="panel">
     <h3 class="section-title">维护模式</h3>
@@ -236,7 +250,13 @@ async function loadBrevoStats(){const d=await api('/brevo-stats');const s=d.stat
 ].map(([lbl,v])=>'<div class="stat"><div class="label">'+lbl+'</div><div class="value">'+v+'</div></div>').join('');
 const hint=document.getElementById('brevoHint');
 if(s.brevoAvailable&&s.brevo){hint.textContent='Brevo 账户: '+s.brevo.email+' · 套餐: '+s.brevo.planType+' · Credits: '+JSON.stringify(s.brevo.credits);hint.style.color='#86efac'}else{hint.textContent='Brevo API: '+(s.brevoError||'不可用')+'（仅显示本地统计）';hint.style.color='#94a3b8'}}
-async function loadRateLimitStats(){const d=await api('/rate-limit-stats');const s=d.stats;document.getElementById('rateLimitStatsGrid').innerHTML='<div class="stat"><div class="label">今日 429 次数</div><div class="value">'+s.todayCount+'</div></div>';
+function statusCodeBadge(code){if(code>=200&&code<300)return'badge-ok';if(code>=400&&code<500)return'badge-warn';if(code>=500)return'badge-off';return'badge-builtin'}
+async function loadRateLimitStats(){const [reqData,rlData]=await Promise.all([api('/request-stats'),api('/rate-limit-stats')]);const rs=reqData.stats;const cat=rs.byCategory;document.getElementById('requestStatsGrid').innerHTML=[
+  ['总请求',rs.totalRequests],['2xx 成功',cat.success2xx],['4xx 客户端',cat.client4xx],['5xx 服务端',cat.server5xx],['其他',cat.other]
+].map(([l,v])=>'<div class="stat"><div class="label">'+l+'</div><div class="value">'+v+'</div></div>').join('');
+const scB=document.getElementById('statusCodeBody');if(!rs.byStatusCode.length){scB.innerHTML='<tr><td colspan="3" class="empty">暂无</td></tr>'}else{const total=rs.totalRequests||1;scB.innerHTML=rs.byStatusCode.map(r=>'<tr><td><span class="badge '+statusCodeBadge(r.statusCode)+'">'+r.statusCode+'</span></td><td>'+r.count+'</td><td>'+(100*r.count/total).toFixed(1)+'%</td></tr>').join('')}
+const pB=document.getElementById('topPathsBody');if(!rs.topPaths.length){pB.innerHTML='<tr><td colspan="2" class="empty">暂无</td></tr>'}else{pB.innerHTML=rs.topPaths.map(r=>'<tr><td><code>'+r.pathGroup+'</code></td><td>'+r.count+'</td></tr>').join('')}
+const s=rlData.stats;document.getElementById('rateLimitStatsGrid').innerHTML='<div class="stat"><div class="label">今日 429 次数</div><div class="value">'+s.todayCount+'</div></div>';
 const ipB=document.getElementById('topIpsBody');if(!s.topIps.length){ipB.innerHTML='<tr><td colspan="2" class="empty">暂无</td></tr>'}else{ipB.innerHTML=s.topIps.map(r=>'<tr><td><code>'+r.ip+'</code></td><td>'+r.count+'</td></tr>').join('')}
 const uB=document.getElementById('topUsersBody');if(!s.topUsers.length){uB.innerHTML='<tr><td colspan="2" class="empty">暂无</td></tr>'}else{uB.innerHTML=s.topUsers.map(r=>'<tr><td>'+r.username+' (#'+r.userId+')</td><td>'+r.count+'</td></tr>').join('')}}
 async function loadMaintenance(){const d=await api('/maintenance');const m=d.maintenance;document.getElementById('maintEnabled').checked=!!m.enabled;document.getElementById('maintMessage').value=m.message||'';document.getElementById('maintBlockLease').checked=!!m.blockLease;document.getElementById('maintBlockSend').checked=!!m.blockSend;document.getElementById('maintBlockMailbox').checked=!!m.blockMailboxCreate}

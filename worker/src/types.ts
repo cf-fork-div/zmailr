@@ -269,6 +269,19 @@ export interface RateLimitStats {
   topUsers: Array<{ userId: number; username: string; count: number }>;
 }
 
+export interface ApiRequestStats {
+  statDate: string;
+  totalRequests: number;
+  byStatusCode: Array<{ statusCode: number; count: number }>;
+  byCategory: {
+    success2xx: number;
+    client4xx: number;
+    server5xx: number;
+    other: number;
+  };
+  topPaths: Array<{ pathGroup: string; count: number }>;
+}
+
 export interface LocalEmailStats {
   sentToday: number;
   failedToday: number;

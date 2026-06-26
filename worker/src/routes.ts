@@ -72,7 +72,7 @@ import {
   getClientIp,
 } from './rate-limit';
 import { checkMaintenanceBlock, maintenanceBlockedBody } from './maintenance';
-import { logRateLimitHit } from './monitoring';
+import { logRateLimitHit, logApiRequestStat } from './monitoring';
 import { getOpenApiJson } from './openapi';
 import { resolveAttachmentBytes } from './r2-attachments';
 import { runHealthChecks } from './health';
@@ -126,6 +126,12 @@ async function apiRateLimitMiddleware(c: any, next: () => Promise<void>) {
   await next();
 }
 
+async function apiRequestStatsMiddleware(c: any, next: () => Promise<void>) {
+  await next();
+  const status = c.res.status;
+  c.executionCtx.waitUntil(logApiRequestStat(c.env.DB, c.req.raw, status));
+}
+
 async function maintenanceMiddleware(c: any, next: () => Promise<void>) {
   const block = await checkMaintenanceBlock(c.env.DB, c.req.path, c.req.method);
   if (block.blocked) {
@@ -136,6 +142,7 @@ async function maintenanceMiddleware(c: any, next: () => Promise<void>) {
 
 app.use('/api/*', maintenanceMiddleware);
 app.use('/api/*', apiRateLimitMiddleware);
+app.use('/api/*', apiRequestStatsMiddleware);
 
 // 健康检查端点
 app.get('/api/health', (c) => {

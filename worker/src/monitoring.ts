@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { recordRateLimitHit } from './database';
+import { recordApiRequestStat, recordRateLimitHit } from './database';
 import { getClientIp } from './rate-limit';
 
 export async function logRateLimitHit(
@@ -16,5 +16,21 @@ export async function logRateLimitHit(
     });
   } catch (error) {
     console.error('记录限流事件失败:', error);
+  }
+}
+
+export async function logApiRequestStat(
+  db: D1Database,
+  request: Request,
+  statusCode: number
+): Promise<void> {
+  try {
+    const url = new URL(request.url);
+    await recordApiRequestStat(db, {
+      statusCode,
+      path: url.pathname,
+    });
+  } catch (error) {
+    console.error('记录 API 请求统计失败:', error);
   }
 }

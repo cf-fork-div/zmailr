@@ -30,8 +30,16 @@ import {
   MaintenanceMode,
   DEFAULT_MAINTENANCE_MODE,
   RateLimitStats,
+  ApiRequestStats,
   LocalEmailStats,
 } from './types';
+import {
+  aggregateByStatusCode,
+  aggregateTopPaths,
+  categorizeStatusTotals,
+  normalizeApiPath,
+  statDateFromTimestamp,
+} from './api-request-stats';
 import { 
   generateId, 
   getCurrentTimestamp, 
@@ -91,6 +99,7 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     await db.exec(`CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER, enabled INTEGER DEFAULT 1, created_by TEXT);`);
     await db.exec(`CREATE TABLE IF NOT EXISTS announcement_reads (user_id INTEGER NOT NULL, announcement_id INTEGER NOT NULL, read_at INTEGER NOT NULL, PRIMARY KEY (user_id, announcement_id), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE);`);
     await db.exec(`CREATE TABLE IF NOT EXISTS rate_limit_hits (id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT NOT NULL, user_id INTEGER, path TEXT NOT NULL, hit_at INTEGER NOT NULL);`);
+    await db.exec(`CREATE TABLE IF NOT EXISTS api_request_stats (stat_date TEXT NOT NULL, status_code INTEGER NOT NULL, path_group TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (stat_date, status_code, path_group));`);
     await db.exec(`CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);`);
     await db.exec(`CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_type TEXT NOT NULL, actor_id TEXT, actor_name TEXT, action TEXT NOT NULL, detail TEXT, ip TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch()));`);
 
@@ -125,6 +134,7 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_user_tokens_hash ON user_tokens(token_hash);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_announcement_reads_user ON announcement_reads(user_id);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_announcements_enabled ON announcements(enabled);`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_api_request_stats_date ON api_request_stats(stat_date);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_rate_limit_hits_hit_at ON rate_limit_hits(hit_at);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_rate_limit_hits_ip ON rate_limit_hits(ip);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_rate_limit_hits_user_id ON rate_limit_hits(user_id);`);
@@ -1821,6 +1831,87 @@ export async function getRateLimitStats(db: D1Database): Promise<RateLimitStats>
       username: row.username as string,
       count: row.count as number,
     })),
+  };
+}
+
+// ─── API request stats (all status codes) ───────────────────
+
+export const API_REQUEST_STATS_RETENTION_DAYS = 7;
+
+export async function recordApiRequestStat(
+  db: D1Database,
+  params: { statusCode: number; path: string; recordedAt?: number }
+): Promise<void> {
+  const pathGroup = normalizeApiPath(params.path);
+  if (!pathGroup) return;
+
+  const recordedAt = params.recordedAt ?? getCurrentTimestamp();
+  const statDate = statDateFromTimestamp(recordedAt);
+
+  await db
+    .prepare(
+      `INSERT INTO api_request_stats (stat_date, status_code, path_group, count)
+       VALUES (?, ?, ?, 1)
+       ON CONFLICT(stat_date, status_code, path_group) DO UPDATE SET count = count + 1`
+    )
+    .bind(statDate, params.statusCode, pathGroup)
+    .run();
+}
+
+export async function cleanupOldApiRequestStats(db: D1Database, now = getCurrentTimestamp()): Promise<number> {
+  const cutoffDate = statDateFromTimestamp(now - API_REQUEST_STATS_RETENTION_DAYS * 86400);
+  const result = await db
+    .prepare(`DELETE FROM api_request_stats WHERE stat_date < ?`)
+    .bind(cutoffDate)
+    .run();
+  return result.meta.changes ?? 0;
+}
+
+export async function getApiRequestStats(db: D1Database): Promise<ApiRequestStats> {
+  const now = getCurrentTimestamp();
+  const statDate = statDateFromTimestamp(now);
+
+  const statusRows = await db
+    .prepare(
+      `SELECT status_code, SUM(count) as count
+       FROM api_request_stats
+       WHERE stat_date = ?
+       GROUP BY status_code`
+    )
+    .bind(statDate)
+    .all<{ status_code: number; count: number }>();
+
+  const pathRows = await db
+    .prepare(
+      `SELECT path_group, SUM(count) as count
+       FROM api_request_stats
+       WHERE stat_date = ?
+       GROUP BY path_group`
+    )
+    .bind(statDate)
+    .all<{ path_group: string; count: number }>();
+
+  const byStatusCode = aggregateByStatusCode(
+    (statusRows.results ?? []).map((row) => ({
+      statusCode: row.status_code,
+      count: row.count,
+    }))
+  );
+  const topPaths = aggregateTopPaths(
+    (pathRows.results ?? []).map((row) => ({
+      pathGroup: row.path_group,
+      count: row.count,
+    }))
+  );
+  const byCategory = categorizeStatusTotals(byStatusCode);
+  const totalRequests = byStatusCode.reduce((sum, row) => sum + row.count, 0);
+
+  return {
+    statDate,
+    totalRequests,
+    byStatusCode,
+    byCategory,
+    topPaths,
   };
 }
 
