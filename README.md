@@ -166,7 +166,7 @@
 
 #### 仪表盘
 
-![管理后台仪表盘 — 系统健康、用户/邮箱/收发信统计与 Brevo 套餐信息](docs/screenshots/admin-dashboard.png)
+<img width="1542" height="791" alt="image" src="https://github.com/user-attachments/assets/6cf7513d-77e5-4ad7-b6ce-2b25d5fb4c5f" />
 
 #### 公告
 
