@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitepress';
 
-/** Published on /docs/ — only quick start, API, and MCP. Other *.md files remain in repo for GitHub. */
+/** Published on /docs/ — script/MCP focused. Admin/deploy etc. remain in repo for GitHub only. */
 const unpublished = [
   'admin-guide.md',
   'api-interactive.md',
@@ -10,7 +10,6 @@ const unpublished = [
   'mailsink-comparison.md',
   'security.md',
   'testing.md',
-  'user-auth.md',
 ];
 
 export default defineConfig({
@@ -28,6 +27,7 @@ export default defineConfig({
     /^\/dashboard\//,
     /^\/api-docs$/,
     /^\/openapi\.json$/,
+    /^\/\.\.\/\.\.\/openapi\.json$/,
   ],
   rewrites: {
     'README.md': 'index.md',
@@ -50,9 +50,30 @@ export default defineConfig({
     ],
 
     sidebar: [
-      { text: '快速开始', link: '/' },
-      { text: 'API 详解', link: '/api' },
-      { text: 'MCP 详解', link: '/mcp' },
+      {
+        text: '入门',
+        items: [
+          { text: '快速开始', link: '/' },
+          { text: '认证与 Token', link: '/user-auth' },
+          { text: '错误码与限制', link: '/errors' },
+        ],
+      },
+      {
+        text: 'API',
+        items: [
+          { text: 'API 概览', link: '/api-overview' },
+          { text: 'API 参考', link: '/api' },
+          { text: '脚本接入', link: '/scripting' },
+          { text: 'OpenAPI', link: '../../openapi.json', target: '_blank' },
+        ],
+      },
+      {
+        text: 'MCP',
+        items: [
+          { text: 'MCP 快速接入', link: '/mcp' },
+          { text: 'MCP 工具参考', link: '/mcp-tools' },
+        ],
+      },
     ],
 
     socialLinks: [{ icon: 'github', link: 'https://github.com/jia0327/zmailr' }],
