@@ -385,7 +385,7 @@ const LandingPage: React.FC = () => {
                 icon="fas fa-code"
                 title={t('landing.showcaseJsonTitle')}
                 desc={t('landing.showcaseJsonDesc')}
-                href="/docs/api.html"
+                href="/docs/api"
                 linkLabel={t('landing.showcaseReadDocs')}
               />
             </div>
@@ -421,7 +421,7 @@ const LandingPage: React.FC = () => {
           <span>© {new Date().getFullYear()} zMailR</span>
           <div className="flex items-center gap-4">
             <a href="/docs/" className="hover:text-foreground transition-colors">{t('landing.footerDocs')}</a>
-            <a href="/docs/api.html" className="hover:text-foreground transition-colors">{t('landing.footerApi')}</a>
+            <a href="/docs/api" className="hover:text-foreground transition-colors">{t('landing.footerApi')}</a>
             <a
               href="https://github.com/jia0327/zmailr"
               target="_blank"

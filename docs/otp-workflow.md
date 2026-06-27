@@ -22,7 +22,7 @@ flowchart LR
 | 1 | 获得 24h 随机邮箱 | 收件箱 → 新建邮箱 | `POST /api/lease` |
 | 2 | 读取 OTP | 收件箱 OTP 高亮 | `GET .../latest-code` 或 `GET /api/mail` |
 | 3 | 确认「有信无码」 | 邮件在列表但无 OTP | 列表有信 + `404 no_code` |
-| 4 | 按发件人域名配正则 | [提取规则](/dashboard/extract-rules) | Session：`POST /api/user/extract-rules` |
+| 4 | 按发件人域名配正则 | <SiteLink to="/dashboard/extract-rules">提取规则</SiteLink> | Session：`POST /api/user/extract-rules` |
 | 5 | 让旧信重新匹配规则 | 邮件详情 → 重新提取 | `POST /api/emails/:id/re-extract` |
 | 6 | CI / Agent 稳定跑通 | — | [第一个脚本](./first-script.md) · [MCP](./mcp.md) |
 

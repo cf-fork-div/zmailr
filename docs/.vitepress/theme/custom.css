@@ -123,3 +123,13 @@ html:not(.dark) .zmailr-callout {
 .dark .zmailr-api-embed iframe {
   box-shadow: none;
 }
+
+/* Table cells: keep inline code badges vertically centered with text */
+.vp-doc table td,
+.vp-doc table th {
+  vertical-align: middle;
+}
+
+.vp-doc table :not(pre) > code {
+  vertical-align: middle;
+}

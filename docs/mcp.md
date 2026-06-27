@@ -72,12 +72,9 @@ JSON 结构与 Cursor 相同。修改后 **重启 Cursor / Claude Desktop**。
 
 也可在 Dashboard **API 调试** 页对照 REST 行为（MCP 底层调用相同接口）：
 
-![交互式 API 文档](./screenshots/api-interactive.png)
-
-在线文档：<SiteLink to="/api-docs">/api-docs</SiteLink>
+![API 调试验证 Token](./screenshots/api-debug-response.png)
 
 ---
-
 ## MCP 还是 REST？
 
 | 方式 | 适合 | 说明 |
@@ -90,6 +87,24 @@ JSON 结构与 Cursor 相同。修改后 **重启 Cursor / Claude Desktop**。
 ---
 
 ## 典型 Agent 工作流
+
+MCP **没有**「写提取规则」工具。新站点须 **先在控制台验证收码、配好规则**，再交给 Agent 全自动跑通。完整路径 → [验证码完整流程](./otp-workflow.md)
+
+### 阶段一：控制台验证（自动化前）
+
+1. **租用邮箱** — 控制台 **新建邮箱** 或 Agent 调 **`lease_mailbox`**
+2. **触发验证** — 在目标网站填写该邮箱，等待验证邮件
+3. **确认能提取 OTP** — 打开 <SiteLink to="/dashboard/inbox">收件箱</SiteLink>：
+   - OTP **已高亮** → 默认或已有规则可用，可进入阶段二
+   - **有信无码**（列表有信但无 OTP 徽章，或 API 返回 `404 no_code`）→ 按 [自定义提取规则](./extract-rules.md) 配置正则，**重新提取** 或让站点重发验证邮件，直至控制台能稳定看到 OTP
+
+::: tip 为何先走控制台？
+`wait_for_mail` 在 `require_code=true` 时只返回 **已提取 OTP** 的邮件。规则未匹配时，即使收件箱已有信，Agent 也会一直等到 `408 timeout`。
+:::
+
+### 阶段二：Agent 自动化
+
+规则稳定后，Agent 可重复执行：
 
 1. **`lease_mailbox`** — 获取 `email`（24h 有效）
 2. 用户在目标网站使用该邮箱注册（或 Agent 通过浏览器工具填写）
@@ -114,7 +129,8 @@ MCP 工具失败时返回 `isError: true`，文本含 HTTP 状态与 body。
 |------|------|------|
 | `401` / 未授权 | Token 无效 | 重建 Token，检查 `ZMAILR_TOKEN` |
 | `403` / 缺少 mail 权限 | Scope 不够 | Token 勾选 `mail` |
-| `404` / `no_code` | 邮件未到 | 改用 `wait_for_mail` 或稍后重试 |
+| `404` / `no_email` | 邮件未到 | 改用 `wait_for_mail` 或稍后重试 |
+| `404` / `no_code` | 有信但未提取 OTP（有信无码） | 先在控制台配 [提取规则](./extract-rules.md)，再重试 |
 | `408` / `timeout` | 长轮询超时 | 增大 `wait_for_mail` 的 `timeout` |
 | `429` / `rate_limit` | 请求过快 | 降频，读 `Retry-After` |
 

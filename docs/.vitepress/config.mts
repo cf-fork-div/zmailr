@@ -3,7 +3,6 @@ import { defineConfig } from 'vitepress';
 /** Published on /docs/ — Tencent Cloud-style tutorials + API/MCP reference. */
 const unpublished = [
   'admin-guide.md',
-  'api-interactive.md',
   'backup.md',
   'brevo-setup.md',
   'deploy.md',
@@ -86,7 +85,6 @@ export default defineConfig({
         text: '参考',
         items: [
           { text: 'OpenAPI', link: '../../openapi.json', target: '_blank' },
-          { text: '交互式 API', link: '../../api-docs' },
         ],
       },
     ],

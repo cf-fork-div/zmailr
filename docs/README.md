@@ -58,7 +58,6 @@
 | 资源 | 链接 |
 |------|------|
 | OpenAPI | <SiteLink to="/openapi.json">/openapi.json</SiteLink> |
-| 交互式 API | <SiteLink to="/api-docs">/api-docs</SiteLink> |
 | 控制台 | <SiteLink to="/dashboard/usage">Dashboard</SiteLink> |
 | 截图清单 | [docs/testing.md](https://github.com/jia0327/zmailr/blob/main/docs/testing.md)（仓库内 E2E 报告，含全页 UI 截图） |
 
@@ -72,7 +71,7 @@
 | 写 Python/CI | [创建 API 密钥](./create-api-key.md) → [验证码完整流程](./otp-workflow.md) |
 | 收信但无 OTP | [验证码完整流程 · 步骤 3–5](./otp-workflow.md#步骤-3收到邮件但未获取到验证码) → [自定义提取规则](./extract-rules.md) |
 | Cursor 用户 | [创建 API 密钥](./create-api-key.md) → [MCP 快速接入](./mcp.md) |
-| 查某个接口 | [API 参考](./api.md) 或 <SiteLink to="/api-docs">/api-docs</SiteLink> |
+| 查某个接口 | [API 参考](./api.md) |
 
 ---
 

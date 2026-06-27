@@ -1,7 +1,14 @@
 /**
- * Verify public doc / app URLs return HTTP 2xx (or 3xx to login for protected routes).
+ * Verify public doc / app URLs and scan built VitePress HTML for bad outbound links.
  * Usage: node scripts/verify-doc-links.mjs [baseUrl]
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DOCS_OUT = path.join(__dirname, '../frontend/public/docs');
+
 const BASE = (process.argv[2] || process.env.ZMAILR_BASE_URL || 'https://zmailr.onlydev.ccwu.cc').replace(
   /\/$/,
   ''
@@ -25,24 +32,59 @@ const checks = [
   { path: '/api/public/status', name: 'public status' },
 ];
 
-async function checkOne({ path, name }) {
-  const url = `${BASE}${path}`;
+/** href values that should never appear in published doc content links */
+const BAD_HREF_PATTERNS = [
+  { re: /class="site-link"[^>]*href="\.\.\/\.\.\//, label: 'site-link still uses ../../ (use absolute path)' },
+  { re: /href="\/docs\/login"/, label: '/docs/login (app route under docs base)' },
+  { re: /<a href="\/docs\/dashboard\//, label: 'markdown link to /docs/dashboard/* (use SiteLink)' },
+];
+
+function scanBuiltDocsHtml() {
+  if (!fs.existsSync(DOCS_OUT)) {
+    console.warn('⚠ docs output missing — run docs build before HTML link scan');
+    return [];
+  }
+
+  const issues = [];
+  for (const name of fs.readdirSync(DOCS_OUT)) {
+    if (!name.endsWith('.html')) continue;
+    const file = path.join(DOCS_OUT, name);
+    const html = fs.readFileSync(file, 'utf8');
+    for (const { re, label } of BAD_HREF_PATTERNS) {
+      if (re.test(html)) {
+        issues.push({ file: name, label });
+      }
+    }
+  }
+  return issues;
+}
+
+async function checkOne({ path: routePath, name }) {
+  const url = `${BASE}${routePath}`;
   try {
     const res = await fetch(url, { redirect: 'follow' });
     const finalUrl = res.url;
     const ok = res.status >= 200 && res.status < 400;
     let bodyHint = '';
-    if (path.startsWith('/api-docs')) {
+    if (routePath.startsWith('/api-docs')) {
       const text = await res.text();
       const spaOk = text.includes('id="root"') && text.includes('/assets/');
       bodyHint = spaOk ? ' (SPA shell)' : ' (invalid SPA response)';
       if (!spaOk) {
-        return { name, path, status: res.status, ok: false, finalUrl, bodyHint };
+        return { name, path: routePath, status: res.status, ok: false, finalUrl, bodyHint };
       }
     }
-    return { name, path, status: res.status, ok, finalUrl, bodyHint };
+    return { name, path: routePath, status: res.status, ok, finalUrl, bodyHint };
   } catch (err) {
-    return { name, path, status: 0, ok: false, error: err.message };
+    return { name, path: routePath, status: 0, ok: false, error: err.message };
+  }
+}
+
+const htmlIssues = scanBuiltDocsHtml();
+if (htmlIssues.length) {
+  console.error('Built docs HTML contains bad outbound links:');
+  for (const { file, label } of htmlIssues) {
+    console.error(`  ✗ ${file}: ${label}`);
   }
 }
 
@@ -56,8 +98,9 @@ for (const r of results) {
   console.log(`${mark} ${r.status} ${r.name} ${r.path}${extra}${hint}`);
 }
 
-if (failed.length) {
-  console.error(`\n${failed.length} link(s) failed`);
+const totalFailed = failed.length + htmlIssues.length;
+if (totalFailed) {
+  console.error(`\n${totalFailed} issue(s) failed`);
   process.exit(1);
 }
-console.log(`\nAll ${results.length} links OK on ${BASE}`);
+console.log(`\nAll ${results.length} URLs OK and doc HTML links clean on ${BASE}`);
