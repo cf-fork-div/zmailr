@@ -7,8 +7,8 @@ import { MailboxProvider } from './contexts/MailboxContext';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './components/DashboardLayout';
-import RootRedirect from './components/RootRedirect';
 import PublicLayout from './components/PublicLayout';
+import LandingPage from './pages/LandingPage';
 
 const ApiDocsPage = lazy(() => import('./pages/ApiDocsPage'));
 const InboxPage = lazy(() => import('./pages/InboxPage'));
@@ -40,7 +40,7 @@ const App: React.FC = () => {
         <div className="min-h-screen bg-background">
           <Suspense fallback={<RouteFallback />}>
             <Routes>
-              <Route path="/" element={<RootRedirect />} />
+              <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />

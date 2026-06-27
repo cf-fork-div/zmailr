@@ -47,6 +47,33 @@ export function curlMail(baseUrl: string): string {
   -H "Authorization: Bearer YOUR_TOKEN"`;
 }
 
+export function curlQuickstart(baseUrl: string): string {
+  return `# 1. 租用临时邮箱
+curl -X POST "${baseUrl}/api/lease" \\
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# 2. 将注册 / 验证流程指向返回的 email 地址
+
+# 3. 长轮询获取验证码（最多等待 60 秒）
+curl "${baseUrl}/api/mail?to=abc123@example.com&timeout=60" \\
+  -H "Authorization: Bearer YOUR_TOKEN"`;
+}
+
+export function mcpConfigExample(baseUrl: string): string {
+  return `{
+  "mcpServers": {
+    "zmailr": {
+      "command": "npx",
+      "args": ["-y", "@zmailr/mcp"],
+      "env": {
+        "ZMAILR_BASE_URL": "${baseUrl}",
+        "ZMAILR_TOKEN": "your-bearer-token"
+      }
+    }
+  }
+}`;
+}
+
 export function curlSend(baseUrl: string): string {
   return `curl -X POST "${baseUrl}/api/send" \\
   -H "Authorization: Bearer YOUR_TOKEN" \\

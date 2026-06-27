@@ -5,14 +5,12 @@ import { useAuth } from '../contexts/AuthContext';
 
 interface DashboardSidebarProps {
   collapsed: boolean;
-  onToggle: () => void;
   mobileOpen: boolean;
   onMobileClose: () => void;
 }
 
 const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   collapsed,
-  onToggle,
   mobileOpen,
   onMobileClose,
 }) => {
@@ -38,21 +36,15 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
     <span className={collapsed ? 'md:sr-only' : undefined}>{text}</span>
   );
 
-  const toggleTitle = collapsed ? t('dashboard.expandSidebar') : t('dashboard.collapseSidebar');
-
   return (
     <aside
-      className={`fixed md:relative inset-y-0 left-0 z-50 border-r border-sky-200/50 dark:border-border bg-gradient-to-b from-white via-sky-50/40 to-white dark:from-card dark:via-card dark:to-card flex flex-col min-h-screen transition-[transform,width] duration-300 ease-in-out w-60 ${
+      className={`fixed md:relative inset-y-0 left-0 z-50 border-r border-sky-200/50 dark:border-border bg-gradient-to-b from-white via-sky-50/40 to-white dark:from-card dark:via-card dark:to-card flex flex-col min-h-screen md:min-h-0 md:h-full transition-[transform,width] duration-300 ease-in-out w-60 ${
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       } md:translate-x-0 ${collapsed ? 'md:w-16' : 'md:w-60'}`}
     >
       <div className={`border-b ${collapsed ? 'md:p-2 p-4' : 'p-4'}`}>
-        <div
-          className={`flex items-center ${
-            collapsed ? 'md:justify-center justify-between gap-2 mb-3' : 'justify-between gap-2 mb-3'
-          }`}
-        >
-          <span className={`flex items-center gap-2 text-lg font-bold tracking-tight ${collapsed ? 'md:hidden' : ''}`}>
+        <div className="flex items-center justify-between gap-2 mb-3 md:hidden">
+          <span className="flex items-center gap-2 text-lg font-bold tracking-tight">
             <span className="w-7 h-7 rounded-lg bg-sky-500/15 flex items-center justify-center shrink-0">
               <i className="fas fa-envelope text-xs text-sky-600 dark:text-sky-400" />
             </span>
@@ -63,18 +55,9 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             onClick={onMobileClose}
             title={t('dashboard.closeMenu')}
             aria-label={t('dashboard.closeMenu')}
-            className="md:hidden flex items-center justify-center w-10 h-10 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors shrink-0"
+            className="flex items-center justify-center w-10 h-10 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors shrink-0"
           >
             <i className="fas fa-times text-sm" />
-          </button>
-          <button
-            type="button"
-            onClick={onToggle}
-            title={toggleTitle}
-            aria-label={toggleTitle}
-            className="hidden md:flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors shrink-0"
-          >
-            <i className={`fas ${collapsed ? 'fa-chevron-right' : 'fa-chevron-left'} text-sm`} />
           </button>
         </div>
         <div className={`flex items-center ${collapsed ? 'md:justify-center gap-3' : 'gap-3'}`}>

@@ -81,8 +81,14 @@ const DashboardLayout: React.FC = () => {
   const openMobile = useCallback(() => setMobileOpen(true), []);
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex flex-col min-h-screen bg-background">
       <SEO title={t('seo.dashboardTitle')} description={t('seo.dashboardDescription')} />
+
+      <DashboardTopBar
+        variant="desktop"
+        collapsed={collapsed}
+        onToggleSidebar={toggleSidebar}
+      />
 
       {mobileOpen && (
         <button
@@ -93,49 +99,48 @@ const DashboardLayout: React.FC = () => {
         />
       )}
 
-      <DashboardSidebar
-        collapsed={collapsed}
-        onToggle={toggleSidebar}
-        mobileOpen={mobileOpen}
-        onMobileClose={closeMobile}
-      />
+      <div className="flex flex-1 min-h-0 w-full">
+        <DashboardSidebar
+          collapsed={collapsed}
+          mobileOpen={mobileOpen}
+          onMobileClose={closeMobile}
+        />
 
-      <div className="flex-1 flex flex-col min-w-0 w-full overflow-hidden">
-        <header className="md:hidden flex items-center gap-2 px-3 py-2.5 border-b bg-card shrink-0">
-          <button
-            type="button"
-            onClick={openMobile}
-            aria-label={t('dashboard.openMenu')}
-            className="flex items-center justify-center w-10 h-10 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors shrink-0"
-          >
-            <i className="fas fa-bars text-lg" />
-          </button>
-          <span className="flex items-center gap-2 min-w-0 flex-1">
-            <span className="w-7 h-7 rounded-lg bg-sky-500/15 flex items-center justify-center shrink-0">
-              <i className="fas fa-envelope text-xs text-sky-600 dark:text-sky-400" />
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <header className="md:hidden flex items-center gap-2 px-3 py-2.5 border-b bg-card shrink-0">
+            <button
+              type="button"
+              onClick={openMobile}
+              aria-label={t('dashboard.openMenu')}
+              className="flex items-center justify-center w-10 h-10 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors shrink-0"
+            >
+              <i className="fas fa-bars text-lg" />
+            </button>
+            <span className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="w-7 h-7 rounded-lg bg-sky-500/15 flex items-center justify-center shrink-0">
+                <i className="fas fa-envelope text-xs text-sky-600 dark:text-sky-400" />
+              </span>
+              <span className="text-lg font-bold tracking-tight truncate">zMailR</span>
             </span>
-            <span className="text-lg font-bold tracking-tight truncate">zMailR</span>
-          </span>
-          <DashboardTopBar variant="mobile" onNavigate={closeMobile} />
-        </header>
+            <DashboardTopBar variant="mobile" onNavigate={closeMobile} />
+          </header>
 
-        <DashboardTopBar variant="desktop" />
-
-        <AnnouncementModal />
-        {maintenance?.enabled && (
-          <div
-            role="status"
-            className="mx-4 md:mx-6 lg:mx-8 mt-4 md:mt-6 px-4 py-3 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-100 text-sm shrink-0"
-          >
-            <i className="fas fa-wrench mr-2" aria-hidden />
-            {maintenance.message}
-          </div>
-        )}
-        <main className="dashboard-main relative flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 lg:p-8">
-          <div className="relative z-[1]">
-            <Outlet />
-          </div>
-        </main>
+          <AnnouncementModal />
+          {maintenance?.enabled && (
+            <div
+              role="status"
+              className="mx-4 md:mx-6 lg:mx-8 mt-4 md:mt-6 px-4 py-3 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-100 text-sm shrink-0"
+            >
+              <i className="fas fa-wrench mr-2" aria-hidden />
+              {maintenance.message}
+            </div>
+          )}
+          <main className="dashboard-main relative flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 lg:p-8">
+            <div className="relative z-[1]">
+              <Outlet />
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );
