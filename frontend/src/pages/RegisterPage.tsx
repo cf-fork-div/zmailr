@@ -26,7 +26,9 @@ const RegisterPage: React.FC = () => {
   const [sentForKey, setSentForKey] = useState<string | null>(null);
   const [sentEmail, setSentEmail] = useState('');
   const [error, setError] = useState('');
+  const [successHint, setSuccessHint] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [turnstileToken, setTurnstileToken] = useState('');
 
@@ -34,6 +36,8 @@ const RegisterPage: React.FC = () => {
     () => `${emailPrefix.trim().toLowerCase()}@${emailDomain}:${password}`,
     [emailPrefix, emailDomain, password]
   );
+
+  const codeSentForCurrentCredentials = sentForKey === credentialsKey && Boolean(sentEmail);
 
   useEffect(() => {
     getRegistrationConfig().then((cfg) => {
@@ -86,6 +90,7 @@ const RegisterPage: React.FC = () => {
     });
     if (!result.success) {
       setError(result.error || t('auth.registerSendFailed'));
+      setSuccessHint('');
       return { ok: false };
     }
     setSentEmail(result.email);
@@ -95,33 +100,50 @@ const RegisterPage: React.FC = () => {
     return { ok: true, email: result.email };
   };
 
+  const handleSendCode = async () => {
+    if (sendingCode || loading || resendCooldown > 0) return;
+    setError('');
+    setSuccessHint('');
+    if (!validateCredentials()) return;
+
+    setSendingCode(true);
+    if (codeSentForCurrentCredentials) {
+      const result = await authRegisterResend(sentEmail, turnstileRequired ? turnstileToken : undefined);
+      setSendingCode(false);
+      if (result.success) {
+        setResendCooldown(60);
+        if (result.deliveryHint) setDeliveryHint(result.deliveryHint);
+        setSuccessHint(t('auth.registerCodeSentHint'));
+        return;
+      }
+      setError(result.error || t('auth.registerSendFailed'));
+      return;
+    }
+
+    const sent = await sendCode();
+    setSendingCode(false);
+    if (sent.ok) {
+      setSuccessHint(t('auth.registerCodeSentHint'));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccessHint('');
     if (!validateCredentials()) return;
 
-    setLoading(true);
-
     if (code.trim().length < 6) {
-      const sent = await sendCode();
-      setLoading(false);
-      if (sent.ok) {
-        setError(t('auth.registerCodeSentHint'));
-      }
+      setError(t('auth.registerEnterCode'));
       return;
     }
 
-    if (sentForKey !== credentialsKey) {
-      const sent = await sendCode();
-      if (!sent.ok) {
-        setLoading(false);
-        return;
-      }
-      setLoading(false);
-      setError(t('auth.registerCodeSentHint'));
+    if (!codeSentForCurrentCredentials) {
+      setError(t('auth.registerSendCodeFirst'));
       return;
     }
 
+    setLoading(true);
     const result = await authRegisterVerify(sentEmail, code.trim());
     setLoading(false);
     if (result.success) {
@@ -132,32 +154,19 @@ const RegisterPage: React.FC = () => {
     setError(result.error || t('auth.registerVerifyFailed'));
   };
 
-  const handleResend = async () => {
-    if (resendCooldown > 0 || loading) return;
-    setError('');
-    if (!validateCredentials()) return;
-    if (!sentEmail || sentForKey !== credentialsKey) {
-      setError(t('auth.registerSendCodeFirst'));
-      return;
-    }
-    if (turnstileRequired && !turnstileToken) {
-      setError(t('auth.turnstileRequired'));
-      return;
-    }
-    setLoading(true);
-    const result = await authRegisterResend(sentEmail, turnstileRequired ? turnstileToken : undefined);
-    setLoading(false);
-    if (result.success) {
-      setResendCooldown(60);
-      if (result.deliveryHint) setDeliveryHint(result.deliveryHint);
-      return;
-    }
-    setError(result.error || t('auth.registerSendFailed'));
-  };
-
   const handlePrefixChange = (value: string) => {
     setEmailPrefix(value.replace(/@.*$/, '').slice(0, 64));
   };
+
+  const sendCodeDisabled =
+    sendingCode || loading || resendCooldown > 0 || (turnstileRequired && !turnstileToken);
+
+  const sendCodeLabel =
+    resendCooldown > 0
+      ? t('auth.registerResendIn', { seconds: resendCooldown })
+      : codeSentForCurrentCredentials
+        ? t('auth.registerResend')
+        : t('auth.registerSendCode');
 
   return (
     <div className="login-shell relative min-h-screen flex flex-col">
@@ -178,14 +187,14 @@ const RegisterPage: React.FC = () => {
           <p className="text-sm text-muted-foreground mt-1 mb-6">{t('auth.registerHint')}</p>
 
           {error && (
-            <p
-              className={`text-sm rounded-md border px-3 py-2 mb-4 ${
-                error === t('auth.registerCodeSentHint')
-                  ? 'border-sky-500/30 bg-sky-500/10 text-sky-900 dark:text-sky-100'
-                  : 'text-destructive border-destructive/30 bg-destructive/5'
-              }`}
-            >
+            <p className="text-sm rounded-md border px-3 py-2 mb-4 text-destructive border-destructive/30 bg-destructive/5">
               {error}
+            </p>
+          )}
+
+          {successHint && (
+            <p className="text-sm rounded-md border px-3 py-2 mb-4 border-sky-500/30 bg-sky-500/10 text-sky-900 dark:text-sky-100">
+              {successHint}
             </p>
           )}
 
@@ -216,7 +225,7 @@ const RegisterPage: React.FC = () => {
                     value={emailDomain}
                     onChange={setEmailDomain}
                     domainGroups={domainGroups}
-                    disabled={loading || domainGroups.length === 0}
+                    disabled={loading || sendingCode || domainGroups.length === 0}
                     className="ml-0.5"
                   />
                 </span>
@@ -246,42 +255,39 @@ const RegisterPage: React.FC = () => {
                 required
               />
             </div>
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-sm font-medium">{t('auth.registerCode')}</label>
-                {sentForKey === credentialsKey && sentEmail && (
-                  <button
-                    type="button"
-                    onClick={handleResend}
-                    disabled={loading || resendCooldown > 0 || (turnstileRequired && !turnstileToken)}
-                    className="text-xs text-sky-600 dark:text-sky-400 hover:underline disabled:opacity-50 disabled:no-underline"
-                  >
-                    {resendCooldown > 0
-                      ? t('auth.registerResendIn', { seconds: resendCooldown })
-                      : t('auth.registerResend')}
-                  </button>
-                )}
-              </div>
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="000000"
-                className="w-full px-3 py-2.5 min-h-10 border rounded-lg bg-background font-mono tracking-widest text-center text-lg focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                autoComplete="one-time-code"
-              />
-              <p className="text-xs text-muted-foreground mt-1">{t('auth.registerCodeFieldHint')}</p>
-            </div>
             {turnstileRequired && turnstileSiteKey && (
               <TurnstileWidget siteKey={turnstileSiteKey} onTokenChange={setTurnstileToken} />
             )}
+            <div>
+              <label className="block text-sm font-medium mb-1.5">{t('auth.registerCode')}</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  className="flex-1 min-w-0 px-3 py-2.5 min-h-10 border rounded-lg bg-background font-mono tracking-widest text-center text-lg focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  autoComplete="one-time-code"
+                />
+                <button
+                  type="button"
+                  onClick={handleSendCode}
+                  disabled={sendCodeDisabled}
+                  className="shrink-0 px-4 py-2.5 min-h-10 rounded-lg font-medium text-sm border border-sky-500/40 text-sky-700 dark:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 disabled:opacity-50 transition-colors whitespace-nowrap"
+                >
+                  {sendingCode ? t('common.loading') : sendCodeLabel}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{t('auth.registerCodeFieldHint')}</p>
+            </div>
             <button
               type="submit"
               disabled={
                 loading ||
+                sendingCode ||
                 registrationOpen === null ||
                 (turnstileRequired && !turnstileToken)
               }
