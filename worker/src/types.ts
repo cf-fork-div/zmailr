@@ -285,22 +285,38 @@ export const DEFAULT_MAINTENANCE_MODE: MaintenanceMode = {
 
 export interface RegistrationSettings {
   enabled: boolean;
-  turnstileSiteKey?: string;
-  turnstileSecretKey?: string;
 }
 
 export const DEFAULT_REGISTRATION_SETTINGS: RegistrationSettings = {
   enabled: false,
-  turnstileSiteKey: '',
-  turnstileSecretKey: '',
+};
+
+/** Admin API / UI — registration toggle only */
+export interface RegistrationSettingsAdminView {
+  enabled: boolean;
+}
+
+export interface TurnstileSettings {
+  siteKey: string;
+  secretKey: string;
+}
+
+export const DEFAULT_TURNSTILE_SETTINGS: TurnstileSettings = {
+  siteKey: '',
+  secretKey: '',
 };
 
 /** Admin API / UI — never expose secret key */
-export interface RegistrationSettingsAdminView {
-  enabled: boolean;
-  turnstileSiteKey: string;
-  hasTurnstileSecret: boolean;
+export interface TurnstileSettingsAdminView {
+  siteKey: string;
+  hasSecret: boolean;
 }
+
+/** @deprecated use RegistrationSettingsAdminView */
+export type RegistrationSettingsLegacy = RegistrationSettings & {
+  turnstileSiteKey?: string;
+  turnstileSecretKey?: string;
+};
 
 export interface RegistrationVerificationRow {
   id: number;

@@ -318,13 +318,13 @@ export interface AuthStats {
   token: AuthTokenSummary | null;
 }
 
-export const authLogin = async (username: string, password: string) => {
+export const authLogin = async (username: string, password: string, turnstileToken?: string) => {
   try {
     const response = await fetch(apiUrl('/api/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, turnstileToken }),
     });
     const data = await response.json();
     if (data.success) return { success: true as const };

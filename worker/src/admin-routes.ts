@@ -28,6 +28,9 @@ import {
   getRegistrationSettings,
   setRegistrationSettings,
   toAdminRegistrationView,
+  getTurnstileSettings,
+  setTurnstileSettings,
+  toAdminTurnstileView,
   getLegacySendDailyQuota,
   setLegacySendDailyQuota,
   listAuditLogs,
@@ -186,16 +189,16 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
   admin.get('/api/maintenance', async (c) => {
     const authErr = await requireAdmin(c);
     if (authErr) return authErr;
-    const [maintenance, legacySendDailyQuota, registration] = await Promise.all([
+    const [maintenance, legacySendDailyQuota, turnstile] = await Promise.all([
       getMaintenanceMode(c.env.DB),
       getLegacySendDailyQuota(c.env.DB),
-      getRegistrationSettings(c.env.DB),
+      getTurnstileSettings(c.env.DB),
     ]);
     return c.json({
       success: true,
       maintenance,
       legacySendDailyQuota,
-      registration: toAdminRegistrationView(registration),
+      turnstile: toAdminTurnstileView(turnstile),
     });
   });
 
@@ -217,23 +220,18 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
         parseInt(String(body.legacySendDailyQuota), 10)
       );
     }
-    let registration = await getRegistrationSettings(c.env.DB);
-    if (body.registration && typeof body.registration === 'object') {
-      const r = body.registration as Record<string, unknown>;
-      registration = await setRegistrationSettings(c.env.DB, {
-        enabled: !!r.enabled,
-        turnstileSiteKey: r.turnstileSiteKey != null ? String(r.turnstileSiteKey) : undefined,
-        turnstileSecretKey: r.turnstileSecretKey != null ? String(r.turnstileSecretKey) : undefined,
-      });
-    } else if (body.registrationEnabled !== undefined) {
-      registration = await setRegistrationSettings(c.env.DB, {
-        enabled: !!body.registrationEnabled,
+    let turnstile = await getTurnstileSettings(c.env.DB);
+    if (body.turnstile && typeof body.turnstile === 'object') {
+      const t = body.turnstile as Record<string, unknown>;
+      turnstile = await setTurnstileSettings(c.env.DB, {
+        siteKey: t.siteKey != null ? String(t.siteKey) : undefined,
+        secretKey: t.secretKey != null ? String(t.secretKey) : undefined,
       });
     }
     const detail: Record<string, unknown> = {
       ...(maintenance as unknown as Record<string, unknown>),
       legacySendDailyQuota,
-      registration: toAdminRegistrationView(registration),
+      turnstile: toAdminTurnstileView(turnstile),
     };
     c.executionCtx.waitUntil(
       writeAuditLog(c.env.DB, {
@@ -248,8 +246,34 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
       success: true,
       maintenance,
       legacySendDailyQuota,
-      registration: toAdminRegistrationView(registration),
+      turnstile: toAdminTurnstileView(turnstile),
     });
+  });
+
+  admin.get('/api/registration', async (c) => {
+    const authErr = await requireAdmin(c);
+    if (authErr) return authErr;
+    const registration = await getRegistrationSettings(c.env.DB);
+    return c.json({ success: true, registration: toAdminRegistrationView(registration) });
+  });
+
+  admin.put('/api/registration', async (c) => {
+    const authErr = await requireAdmin(c);
+    if (authErr) return authErr;
+    const body = await c.req.json();
+    const registration = await setRegistrationSettings(c.env.DB, {
+      enabled: !!body.enabled,
+    });
+    c.executionCtx.waitUntil(
+      writeAuditLog(c.env.DB, {
+        actorType: 'admin',
+        actorName: 'admin',
+        action: 'registration.update',
+        detail: { enabled: registration.enabled },
+        ip: adminIp(c),
+      })
+    );
+    return c.json({ success: true, registration: toAdminRegistrationView(registration) });
   });
 
   admin.get('/api/audit-logs', async (c) => {

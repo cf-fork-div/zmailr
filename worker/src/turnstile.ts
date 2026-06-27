@@ -1,6 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from './types';
-import { getRegistrationSettings } from './database';
+import { getTurnstileSettings } from './database';
 
 const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
@@ -19,9 +19,9 @@ export async function resolveTurnstileSettings(
   db: D1Database,
   env: Pick<Env, 'TURNSTILE_SITE_KEY' | 'TURNSTILE_SECRET_KEY'>
 ): Promise<ResolvedTurnstileSettings> {
-  const reg = await getRegistrationSettings(db);
-  const siteKey = (reg.turnstileSiteKey?.trim() || env.TURNSTILE_SITE_KEY?.trim()) || null;
-  const secretKey = (reg.turnstileSecretKey?.trim() || env.TURNSTILE_SECRET_KEY?.trim()) || null;
+  const stored = await getTurnstileSettings(db);
+  const siteKey = (stored.siteKey?.trim() || env.TURNSTILE_SITE_KEY?.trim()) || null;
+  const secretKey = (stored.secretKey?.trim() || env.TURNSTILE_SECRET_KEY?.trim()) || null;
   return {
     siteKey,
     secretKey,

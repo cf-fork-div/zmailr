@@ -7,7 +7,7 @@ interface AuthContextValue {
   stats: AuthStats | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (username: string, password: string, turnstileToken?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -37,8 +37,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refresh().finally(() => setIsLoading(false));
   }, [refresh]);
 
-  const login = async (username: string, password: string) => {
-    const result = await authLogin(username, password);
+  const login = async (username: string, password: string, turnstileToken?: string) => {
+    const result = await authLogin(username, password, turnstileToken);
     if (result.success) {
       await refresh();
       return { success: true };

@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import ThemeSwitcher from '../components/ThemeSwitcher';
-import { isRegistrationEnabled } from '../config';
+import TurnstileWidget from '../components/TurnstileWidget';
+import { getRegistrationConfig } from '../config';
 
 const LOGIN_FEATURES = [
   { icon: 'fas fa-inbox', titleKey: 'auth.loginFeatureInbox', descKey: 'auth.loginFeatureInboxDesc' },
@@ -22,10 +23,17 @@ const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
+  const [turnstileRequired, setTurnstileRequired] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   useEffect(() => {
-    isRegistrationEnabled().then(setRegistrationOpen);
+    getRegistrationConfig().then((cfg) => {
+      setRegistrationEnabled(cfg.enabled);
+      setTurnstileRequired(cfg.turnstile.enabled);
+      setTurnstileSiteKey(cfg.turnstile.siteKey);
+    });
   }, []);
 
   if (!isLoading && isAuthenticated) {
@@ -35,8 +43,12 @@ const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (turnstileRequired && !turnstileToken) {
+      setError(t('auth.turnstileRequired'));
+      return;
+    }
     setLoading(true);
-    const result = await login(username, password);
+    const result = await login(username, password, turnstileRequired ? turnstileToken : undefined);
     setLoading(false);
     if (result.success) {
       navigate('/dashboard/usage');
@@ -132,21 +144,28 @@ const LoginPage: React.FC = () => {
                   </button>
                 </div>
               </div>
+              {turnstileRequired && turnstileSiteKey && (
+                <TurnstileWidget siteKey={turnstileSiteKey} onTokenChange={setTurnstileToken} />
+              )}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (turnstileRequired && !turnstileToken)}
                 className="w-full py-2.5 min-h-10 rounded-lg font-medium text-white bg-sky-600 hover:bg-sky-500 dark:bg-sky-500 dark:hover:bg-sky-400 disabled:opacity-50 shadow-md shadow-sky-600/20 transition-colors"
               >
                 {loading ? t('common.loading') : t('auth.login')}
               </button>
             </form>
 
-            {registrationOpen && (
+            {registrationEnabled !== null && (
               <p className="text-sm text-muted-foreground mt-6 text-center">
                 {t('auth.registerNoAccount')}{' '}
-                <Link to="/register" className="text-sky-600 dark:text-sky-400 hover:underline font-medium">
-                  {t('auth.register')}
-                </Link>
+                {registrationEnabled ? (
+                  <Link to="/register" className="text-sky-600 dark:text-sky-400 hover:underline font-medium">
+                    {t('auth.register')}
+                  </Link>
+                ) : (
+                  <span className="text-muted-foreground/80">{t('auth.registerDisabledByAdmin')}</span>
+                )}
               </p>
             )}
           </div>

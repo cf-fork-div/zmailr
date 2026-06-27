@@ -579,6 +579,27 @@ async function requireUserSession(c: any): Promise<Response | null> {
   return null;
 }
 
+async function requireTurnstile(c: any, body: Record<string, unknown>): Promise<Response | null> {
+  const turnstile = await resolveTurnstileSettings(c.env.DB, c.env);
+  if (!turnstile.enabled || !turnstile.secretKey) {
+    return null;
+  }
+  const token =
+    body.turnstileToken != null
+      ? String(body.turnstileToken).trim()
+      : body['cf-turnstile-response'] != null
+        ? String(body['cf-turnstile-response']).trim()
+        : '';
+  if (!token) {
+    return c.json({ success: false, error: '请先完成人机验证' }, 400);
+  }
+  const verified = await verifyTurnstileToken(turnstile.secretKey, token, getClientIp(c.req.raw));
+  if (!verified.success) {
+    return c.json({ success: false, error: '人机验证无效或已过期，请重试' }, 400);
+  }
+  return null;
+}
+
 app.post('/api/auth/login', async (c) => {
   try {
     const ip = getClientIp(c.req.raw);
@@ -588,6 +609,9 @@ app.post('/api/auth/login', async (c) => {
     }
 
     const body = await c.req.json();
+    const turnstileErr = await requireTurnstile(c, body as Record<string, unknown>);
+    if (turnstileErr) return turnstileErr;
+
     if (!body.username || !body.password) {
       return c.json({ success: false, error: '缺少用户名或密码' }, 400);
     }
@@ -614,24 +638,7 @@ app.post('/api/auth/login', async (c) => {
 });
 
 async function requireRegisterTurnstile(c: any, body: Record<string, unknown>): Promise<Response | null> {
-  const turnstile = await resolveTurnstileSettings(c.env.DB, c.env);
-  if (!turnstile.enabled || !turnstile.secretKey) {
-    return null;
-  }
-  const token =
-    body.turnstileToken != null
-      ? String(body.turnstileToken).trim()
-      : body['cf-turnstile-response'] != null
-        ? String(body['cf-turnstile-response']).trim()
-        : '';
-  if (!token) {
-    return c.json({ success: false, error: '请先完成人机验证' }, 400);
-  }
-  const verified = await verifyTurnstileToken(turnstile.secretKey, token, getClientIp(c.req.raw));
-  if (!verified.success) {
-    return c.json({ success: false, error: '人机验证无效或已过期，请重试' }, 400);
-  }
-  return null;
+  return requireTurnstile(c, body);
 }
 
 app.post('/api/auth/register/send-code', async (c) => {

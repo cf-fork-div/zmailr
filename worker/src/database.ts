@@ -33,6 +33,9 @@ import {
   RegistrationSettings,
   DEFAULT_REGISTRATION_SETTINGS,
   RegistrationSettingsAdminView,
+  TurnstileSettings,
+  DEFAULT_TURNSTILE_SETTINGS,
+  TurnstileSettingsAdminView,
   RegistrationVerificationRow,
   DEFAULT_LEGACY_SEND_DAILY_QUOTA,
   RateLimitStats,
@@ -2410,26 +2413,39 @@ export async function setMaintenanceMode(db: D1Database, mode: MaintenanceMode):
 }
 
 const REGISTRATION_SETTINGS_KEY = 'registration_settings';
+const TURNSTILE_SETTINGS_KEY = 'turnstile_settings';
 
 function parseRegistrationSettings(raw: string | null | undefined): RegistrationSettings {
   if (!raw) return { ...DEFAULT_REGISTRATION_SETTINGS };
   try {
-    const parsed = JSON.parse(raw) as Partial<RegistrationSettings>;
-    return {
-      enabled: !!parsed.enabled,
-      turnstileSiteKey: typeof parsed.turnstileSiteKey === 'string' ? parsed.turnstileSiteKey.trim() : '',
-      turnstileSecretKey: typeof parsed.turnstileSecretKey === 'string' ? parsed.turnstileSecretKey.trim() : '',
-    };
+    const parsed = JSON.parse(raw) as Partial<RegistrationSettings & { turnstileSiteKey?: string }>;
+    return { enabled: !!parsed.enabled };
   } catch {
     return { ...DEFAULT_REGISTRATION_SETTINGS };
   }
 }
 
+function parseTurnstileSettings(raw: string | null | undefined): TurnstileSettings {
+  if (!raw) return { ...DEFAULT_TURNSTILE_SETTINGS };
+  try {
+    const parsed = JSON.parse(raw) as Partial<TurnstileSettings & { turnstileSiteKey?: string; turnstileSecretKey?: string }>;
+    return {
+      siteKey: String(parsed.siteKey ?? parsed.turnstileSiteKey ?? '').trim(),
+      secretKey: String(parsed.secretKey ?? parsed.turnstileSecretKey ?? '').trim(),
+    };
+  } catch {
+    return { ...DEFAULT_TURNSTILE_SETTINGS };
+  }
+}
+
 export function toAdminRegistrationView(settings: RegistrationSettings): RegistrationSettingsAdminView {
+  return { enabled: settings.enabled };
+}
+
+export function toAdminTurnstileView(settings: TurnstileSettings): TurnstileSettingsAdminView {
   return {
-    enabled: settings.enabled,
-    turnstileSiteKey: settings.turnstileSiteKey ?? '',
-    hasTurnstileSecret: !!(settings.turnstileSecretKey?.trim()),
+    siteKey: settings.siteKey ?? '',
+    hasSecret: !!(settings.secretKey?.trim()),
   };
 }
 
@@ -2440,29 +2456,56 @@ export async function getRegistrationSettings(db: D1Database): Promise<Registrat
 
 export async function setRegistrationSettings(
   db: D1Database,
-  settings: {
-    enabled: boolean;
-    turnstileSiteKey?: string;
-    turnstileSecretKey?: string;
-  }
+  settings: { enabled: boolean }
 ): Promise<RegistrationSettings> {
-  const existing = await getRegistrationSettings(db);
-  let turnstileSiteKey = existing.turnstileSiteKey ?? '';
-  let turnstileSecretKey = existing.turnstileSecretKey ?? '';
-
-  if (settings.turnstileSiteKey !== undefined) {
-    turnstileSiteKey = String(settings.turnstileSiteKey).trim();
-  }
-  if (settings.turnstileSecretKey !== undefined && String(settings.turnstileSecretKey).trim() !== '') {
-    turnstileSecretKey = String(settings.turnstileSecretKey).trim();
-  }
-
-  const normalized: RegistrationSettings = {
-    enabled: !!settings.enabled,
-    turnstileSiteKey,
-    turnstileSecretKey,
-  };
+  const normalized: RegistrationSettings = { enabled: !!settings.enabled };
   await setSystemSetting(db, REGISTRATION_SETTINGS_KEY, JSON.stringify(normalized));
+  return normalized;
+}
+
+async function migrateTurnstileFromRegistration(db: D1Database): Promise<TurnstileSettings | null> {
+  const regRaw = await getSystemSetting(db, REGISTRATION_SETTINGS_KEY);
+  if (!regRaw) return null;
+  try {
+    const parsed = JSON.parse(regRaw) as {
+      turnstileSiteKey?: string;
+      turnstileSecretKey?: string;
+    };
+    const siteKey = String(parsed.turnstileSiteKey ?? '').trim();
+    const secretKey = String(parsed.turnstileSecretKey ?? '').trim();
+    if (!siteKey && !secretKey) return null;
+    const migrated: TurnstileSettings = { siteKey, secretKey };
+    await setSystemSetting(db, TURNSTILE_SETTINGS_KEY, JSON.stringify(migrated));
+    return migrated;
+  } catch {
+    return null;
+  }
+}
+
+export async function getTurnstileSettings(db: D1Database): Promise<TurnstileSettings> {
+  const raw = await getSystemSetting(db, TURNSTILE_SETTINGS_KEY);
+  if (raw) return parseTurnstileSettings(raw);
+  const migrated = await migrateTurnstileFromRegistration(db);
+  return migrated ?? { ...DEFAULT_TURNSTILE_SETTINGS };
+}
+
+export async function setTurnstileSettings(
+  db: D1Database,
+  settings: { siteKey?: string; secretKey?: string }
+): Promise<TurnstileSettings> {
+  const existing = await getTurnstileSettings(db);
+  let siteKey = existing.siteKey ?? '';
+  let secretKey = existing.secretKey ?? '';
+
+  if (settings.siteKey !== undefined) {
+    siteKey = String(settings.siteKey).trim();
+  }
+  if (settings.secretKey !== undefined && String(settings.secretKey).trim() !== '') {
+    secretKey = String(settings.secretKey).trim();
+  }
+
+  const normalized: TurnstileSettings = { siteKey, secretKey };
+  await setSystemSetting(db, TURNSTILE_SETTINGS_KEY, JSON.stringify(normalized));
   return normalized;
 }
 

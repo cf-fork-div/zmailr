@@ -160,6 +160,12 @@ html.light .chart-empty{color:#94a3b8}
     <p class="hint" id="brevoHint"></p>
   </div>
   <div id="panel-users" class="panel">
+    <div class="card" style="margin-bottom:24px">
+      <h3 class="section-title">用户注册</h3>
+      <p class="section-desc">开启后，用户可使用腾讯/网易/Gmail/iCloud/Outlook/搜狐等知名邮箱自助注册；验证码由系统通过 Brevo 发信</p>
+      <div class="form-group"><label><input type="checkbox" id="regEnabled"> 开放用户注册</label></div>
+      <button class="btn btn-sm" onclick="saveRegistration()">保存注册设置</button>
+    </div>
     <div class="toolbar">
       <button class="btn" onclick="showUserModal()">新增用户</button>
     </div>
@@ -251,21 +257,19 @@ html.light .chart-empty{color:#94a3b8}
     <table><thead><tr><th>ID</th><th>域名</th><th>默认</th><th>Cloudflare</th><th>Brevo</th><th>状态</th><th>操作</th></tr></thead><tbody id="domainsBody"></tbody></table>
   </div>
   <div id="panel-settings" class="panel">
-    <h3 class="section-title">用户注册</h3>
-    <p class="section-desc">开启后，用户可使用腾讯/网易/Gmail/iCloud/Outlook/搜狐等知名邮箱注册；验证码由系统通过 Brevo 发信</p>
-    <div class="form-group"><label><input type="checkbox" id="regEnabled"> 开放用户注册</label></div>
-    <div id="regTurnstilePanel">
-      <p class="hint" style="margin-bottom:12px">填写 Cloudflare Turnstile 密钥后，注册发码前会要求无感人机验证，降低恶意刷注册与滥发验证码。</p>
-      <div class="form-group"><label>Turnstile Site Key（站点公钥）</label><input id="regTurnstileSiteKey" placeholder="0x4AAAAAAA..."></div>
-      <div class="form-group"><label>Turnstile Secret Key（密钥）</label><input id="regTurnstileSecretKey" type="password" placeholder="0x4AAAAAAA..."><p class="hint" id="regTurnstileSecretHint"></p></div>
+    <h3 class="section-title">无感人机验证（Turnstile）</h3>
+    <p class="section-desc">配置 Cloudflare Turnstile 后，登录、注册发码、忘记密码等操作前会进行无感验证，降低恶意刷接口风险</p>
+    <div id="turnstilePanel">
+      <div class="form-group"><label>Turnstile Site Key（站点公钥）</label><input id="turnstileSiteKey" placeholder="0x4AAAAAAA..."></div>
+      <div class="form-group"><label>Turnstile Secret Key（密钥）</label><input id="turnstileSecretKey" type="password" placeholder="0x4AAAAAAA..."><p class="hint" id="turnstileSecretHint"></p></div>
       <div class="card" style="margin-bottom:16px;font-size:.8125rem;line-height:1.65">
         <h4 style="margin-bottom:8px;font-size:.875rem">如何获取 Turnstile 密钥？</h4>
         <ol style="margin:0;padding-left:1.25rem">
-          <li>登录 <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare 控制台</a>，进入 <strong>Turnstile</strong>（或搜索 Turnstile）</li>
+          <li>登录 <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare 控制台</a>，进入 <strong>Turnstile</strong></li>
           <li>点击 <strong>Add widget</strong>，模式选 <strong>Managed</strong>（无感验证，多数用户无需点击）</li>
           <li><strong>Hostname</strong> 填写本站域名（如 <code>example.com</code>，不要带 <code>https://</code>）</li>
-          <li>创建后复制 <strong>Site Key</strong> → 填入上方「站点公钥」；复制 <strong>Secret Key</strong> → 填入「密钥」</li>
-          <li>保存本页设置后，注册页「发送验证码」前会出现 Turnstile 组件</li>
+          <li>创建后复制 <strong>Site Key</strong> 与 <strong>Secret Key</strong> 填入上方</li>
+          <li>保存后，登录页与注册/重置密码发码前会出现 Turnstile 验证</li>
         </ol>
         <p class="hint" style="margin-top:10px">Secret Key 仅保存在服务器，不会回显；留空密钥输入框表示<strong>不修改</strong>已保存的 Secret。</p>
       </div>
@@ -361,7 +365,7 @@ function showLogin(){document.getElementById('loginView').style.display='flex';d
 function showApp(){document.getElementById('loginView').style.display='none';document.getElementById('appView').style.display='block'}
 async function doLogin(){const pw=document.getElementById('passwordInput').value;const err=document.getElementById('loginError');err.style.display='none';try{const r=await fetch('${loginPath}',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({password:pw})});const d=await r.json();if(!d.success){err.textContent=d.error||'登录失败';err.style.display='block';return}showApp();loadAll()}catch(e){err.textContent='网络错误';err.style.display='block'}}
 async function doLogout(){await fetch('${logoutPath}',{method:'POST',credentials:'include'});showLogin()}
-function switchTab(name){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+name));if(name==='users')loadUsers();if(name==='domains')loadDomains();if(name==='announcements')loadAnnouncements();if(name==='rules')loadRules();if(name==='ratelimit')loadRateLimitStats();if(name==='settings')loadMaintenance();if(name==='audit')loadAuditLogs(1)}
+function switchTab(name){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+name));if(name==='users'){loadUsers();loadRegistration()}if(name==='domains')loadDomains();if(name==='announcements')loadAnnouncements();if(name==='rules')loadRules();if(name==='ratelimit')loadRateLimitStats();if(name==='settings')loadMaintenance();if(name==='audit')loadAuditLogs(1)}
 function hideModal(id){document.getElementById(id).classList.remove('show')}
 function showModal(id){document.getElementById(id).classList.add('show')}
 function fmtTime(ts){if(!ts)return'-';const d=new Date(ts>1e12?ts:ts*1000);return d.toLocaleString('zh-CN')}
@@ -391,8 +395,10 @@ const pB=document.getElementById('topPathsBody');if(!rs.topPaths.length){pB.inne
 const s=rlData.stats;document.getElementById('rateLimitStatsGrid').innerHTML='<div class="stat"><div class="label">今日 429 次数</div><div class="value">'+s.todayCount+'</div></div>';
 const ipB=document.getElementById('topIpsBody');if(!s.topIps.length){ipB.innerHTML='<tr><td colspan="2" class="empty">暂无</td></tr>'}else{ipB.innerHTML=s.topIps.map(r=>'<tr><td><code>'+r.ip+'</code></td><td>'+r.count+'</td></tr>').join('')}
 const uB=document.getElementById('topUsersBody');if(!s.topUsers.length){uB.innerHTML='<tr><td colspan="2" class="empty">暂无</td></tr>'}else{uB.innerHTML=s.topUsers.map(r=>'<tr><td>'+r.username+' (#'+r.userId+')</td><td>'+r.count+'</td></tr>').join('')}}
-async function loadMaintenance(){const d=await api('/maintenance');const m=d.maintenance;const r=d.registration||{};document.getElementById('regEnabled').checked=!!r.enabled;document.getElementById('regTurnstileSiteKey').value=r.turnstileSiteKey||'';document.getElementById('regTurnstileSecretKey').value='';const hint=document.getElementById('regTurnstileSecretHint');if(r.hasTurnstileSecret){hint.textContent='已保存 Secret Key（留空表示不修改）';hint.style.color='#86efac'}else{hint.textContent='尚未配置 Secret Key';hint.style.color='#94a3b8'}document.getElementById('maintEnabled').checked=!!m.enabled;document.getElementById('maintMessage').value=m.message||'';document.getElementById('maintBlockLease').checked=!!m.blockLease;document.getElementById('maintBlockSend').checked=!!m.blockSend;document.getElementById('maintBlockMailbox').checked=!!m.blockMailboxCreate;updateMaintenancePreview()}
-function readMaintenanceForm(){return{enabled:document.getElementById('maintEnabled').checked,message:document.getElementById('maintMessage').value,blockLease:document.getElementById('maintBlockLease').checked,blockSend:document.getElementById('maintBlockSend').checked,blockMailboxCreate:document.getElementById('maintBlockMailbox').checked,registration:{enabled:document.getElementById('regEnabled').checked,turnstileSiteKey:document.getElementById('regTurnstileSiteKey').value.trim(),turnstileSecretKey:document.getElementById('regTurnstileSecretKey').value}}}
+async function loadRegistration(){const d=await api('/registration');document.getElementById('regEnabled').checked=!!(d.registration&&d.registration.enabled)}
+async function saveRegistration(){await api('/registration',{method:'PUT',body:JSON.stringify({enabled:document.getElementById('regEnabled').checked})});alert('注册设置已保存')}
+async function loadMaintenance(){const d=await api('/maintenance');const m=d.maintenance;const t=d.turnstile||{};document.getElementById('turnstileSiteKey').value=t.siteKey||'';document.getElementById('turnstileSecretKey').value='';const hint=document.getElementById('turnstileSecretHint');if(t.hasSecret){hint.textContent='已保存 Secret Key（留空表示不修改）';hint.style.color='#86efac'}else{hint.textContent='尚未配置 Secret Key';hint.style.color='#94a3b8'}document.getElementById('maintEnabled').checked=!!m.enabled;document.getElementById('maintMessage').value=m.message||'';document.getElementById('maintBlockLease').checked=!!m.blockLease;document.getElementById('maintBlockSend').checked=!!m.blockSend;document.getElementById('maintBlockMailbox').checked=!!m.blockMailboxCreate;updateMaintenancePreview()}
+function readMaintenanceForm(){return{enabled:document.getElementById('maintEnabled').checked,message:document.getElementById('maintMessage').value,blockLease:document.getElementById('maintBlockLease').checked,blockSend:document.getElementById('maintBlockSend').checked,blockMailboxCreate:document.getElementById('maintBlockMailbox').checked,turnstile:{siteKey:document.getElementById('turnstileSiteKey').value.trim(),secretKey:document.getElementById('turnstileSecretKey').value}}}
 function getMaintenanceBlockedLabelsClient(m){const labels=[];if(m.blockSend)labels.push('发送邮件');if(m.blockMailboxCreate)labels.push('创建新邮箱（含 API 租用）');else if(m.blockLease)labels.push('API 租用随机邮箱');return labels}
 function buildMaintenanceDisplayMessageClient(m){if(!m.enabled)return'';const custom=(m.message||'').trim();const blocked=getMaintenanceBlockedLabelsClient(m);if(!blocked.length)return custom||'系统维护中，请稍后再试';const blockedText='暂停服务：'+blocked.join('、')+'。';return custom?custom+' '+blockedText:'系统维护中。'+blockedText}
 function updateMaintenancePreview(){const m=readMaintenanceForm();const el=document.getElementById('maintPreview');if(!m.enabled){el.style.display='none';return}el.style.display='block';el.innerHTML='<strong>用户端将看到：</strong><br>'+esc(buildMaintenanceDisplayMessageClient(m))}

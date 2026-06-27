@@ -28,6 +28,7 @@
     "loginFailed": "用户名或密码错误",
     "register": "注册",
     "registerNoAccount": "还没有账户？",
+    "registerDisabledByAdmin": "注册功能已被管理员关闭",
     "registerHasAccount": "已有账户？",
     "registerTitle": "创建账户",
     "registerVerifyTitle": "验证邮箱",
