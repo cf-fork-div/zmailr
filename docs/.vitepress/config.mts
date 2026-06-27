@@ -28,6 +28,9 @@ export default defineConfig({
     /^\/api-docs$/,
     /^\/openapi\.json$/,
     /^\/\.\.\/\.\.\/openapi\.json$/,
+    /^\.\/testing\.md$/,
+    /^\.\/admin-guide\.md$/,
+    /^\.\/deploy\.md$/,
   ],
   rewrites: {
     'README.md': 'index.md',

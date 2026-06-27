@@ -60,7 +60,7 @@
 | OpenAPI | <SiteLink to="/openapi.json">/openapi.json</SiteLink> |
 | 交互式 API | <SiteLink to="/api-docs">/api-docs</SiteLink> |
 | 控制台 | <SiteLink to="/dashboard/usage">Dashboard</SiteLink> |
-| 截图清单 | [testing.md](./testing.md)（全页 UI 截图） |
+| 截图清单 | [docs/testing.md](https://github.com/jia0327/zmailr/blob/main/docs/testing.md)（仓库内 E2E 报告，含全页 UI 截图） |
 
 ---
 
