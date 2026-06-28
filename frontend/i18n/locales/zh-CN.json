@@ -194,7 +194,7 @@
     "outboxQuotaUsedTotal": "已用额度 / 今日总额",
     "outboxQuotaUsedTotalHint": "今日发信次数 / 每日配额",
     "leaseCount": "今日随机邮箱",
-    "leaseCountHint": "今日已收到邮件的随机邮箱数 / 日配额（未收信不计入）",
+    "leaseCountHint": "今日收信邮箱 / 日配额",
     "usageDate": "统计日期",
     "usedToday": "今日已用",
     "usedTodayHint": "今日发信次数",
@@ -221,6 +221,7 @@
   },
   "history": {
     "mailboxList": "邮箱历史",
+    "latestMailboxHint": "仅展示最近收信的一则邮箱及其最新邮件",
     "noMailboxes": "暂无邮箱记录",
     "reactivate": "续期",
     "reactivateSuccess": "邮箱已续期，可继续收信",

@@ -505,10 +505,24 @@ export interface ListMailboxesByUserOptions {
   includeExpired?: boolean;
   hasEmails?: boolean;
   search?: string;
+  /** Include latest email subject / extracted code per mailbox */
+  withLatestEmail?: boolean;
+  /** Sort by latest received email (requires mailboxes with emails for meaningful order) */
+  orderBy?: 'created' | 'latestEmail';
 }
 
+export interface MailboxLatestEmailPreview {
+  subject: string;
+  extractedCode: string | null;
+  receivedAt: number;
+}
+
+export type MailboxListItem = Mailbox & {
+  latestEmail?: MailboxLatestEmailPreview | null;
+};
+
 export interface PaginatedMailboxes {
-  mailboxes: Mailbox[];
+  mailboxes: MailboxListItem[];
   total: number;
 }
 
@@ -521,6 +535,8 @@ export async function listMailboxesByUser(
   const offset = options.offset ?? 0;
   const includeExpired = options.includeExpired ?? false;
   const hasEmails = options.hasEmails ?? false;
+  const withLatestEmail = options.withLatestEmail ?? false;
+  const orderBy = options.orderBy ?? 'created';
   const searchTerm = (options.search ?? '').trim();
 
   const now = getCurrentTimestamp();
@@ -548,6 +564,17 @@ export async function listMailboxesByUser(
   const where = whereClauses.join(' AND ');
   const fromClause = 'FROM mailboxes m';
 
+  const latestEmailSelect = withLatestEmail
+    ? `, (SELECT e.subject FROM emails e WHERE e.mailbox_id = m.id ORDER BY e.received_at DESC LIMIT 1) AS latest_email_subject
+       , (SELECT e.extracted_code FROM emails e WHERE e.mailbox_id = m.id ORDER BY e.received_at DESC LIMIT 1) AS latest_email_extracted_code
+       , (SELECT e.received_at FROM emails e WHERE e.mailbox_id = m.id ORDER BY e.received_at DESC LIMIT 1) AS latest_email_received_at`
+    : '';
+
+  const orderClause =
+    orderBy === 'latestEmail'
+      ? `ORDER BY (SELECT MAX(e.received_at) FROM emails e WHERE e.mailbox_id = m.id) DESC, m.created_at DESC`
+      : 'ORDER BY m.created_at DESC';
+
   const countRow = await db
     .prepare(`SELECT COUNT(*) as count ${fromClause} WHERE ${where}`)
     .bind(...bindings)
@@ -556,16 +583,33 @@ export async function listMailboxesByUser(
   const results = await db
     .prepare(
       `SELECT m.id, m.address, m.created_at, m.expires_at, m.ip_address, m.last_accessed, m.user_id, m.mail_domain
+       ${latestEmailSelect}
        ${fromClause}
        WHERE ${where}
-       ORDER BY m.created_at DESC
+       ${orderClause}
        LIMIT ? OFFSET ?`
     )
     .bind(...bindings, limit, offset)
     .all();
 
-  const mailboxes = results.results
-    ? results.results.map((row) => rowToMailbox(row as Record<string, unknown>))
+  const mailboxes: MailboxListItem[] = results.results
+    ? results.results.map((row) => {
+        const record = row as Record<string, unknown>;
+        const mailbox = rowToMailbox(record);
+        if (!withLatestEmail) return mailbox;
+        const receivedAt = record.latest_email_received_at as number | null | undefined;
+        if (receivedAt == null) {
+          return { ...mailbox, latestEmail: null };
+        }
+        return {
+          ...mailbox,
+          latestEmail: {
+            subject: (record.latest_email_subject as string) ?? '',
+            extractedCode: (record.latest_email_extracted_code as string | null) ?? null,
+            receivedAt,
+          },
+        };
+      })
     : [];
 
   return { mailboxes, total: countRow?.count ?? 0 };

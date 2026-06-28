@@ -1368,6 +1368,8 @@ app.get('/api/user/mailboxes', async (c) => {
   const page = Math.max(parseInt(c.req.query('page') || '1', 10), 1);
   const offset = (page - 1) * limit;
   const hasEmails = c.req.query('hasEmails') === 'true';
+  const withLatestEmail = c.req.query('withLatestEmail') === 'true';
+  const orderBy = c.req.query('orderBy') === 'latestEmail' ? 'latestEmail' : 'created';
   const search = c.req.query('search') || c.req.query('q') || undefined;
   await cleanupExpiredMailboxesForUser(c.env.DB, user.id);
   const { mailboxes, total } = await listMailboxesByUser(c.env.DB, user.id, {
@@ -1376,6 +1378,8 @@ app.get('/api/user/mailboxes', async (c) => {
     includeExpired: false,
     hasEmails,
     search,
+    withLatestEmail,
+    orderBy,
   });
   const defaultDomain = await resolveDefaultMailDomain(c.env.DB, c.env);
   const now = getCurrentTimestamp();
@@ -1385,6 +1389,7 @@ app.get('/api/user/mailboxes', async (c) => {
       ...m,
       email: formatMailboxEmail(m, defaultDomain),
       isExpired: m.expiresAt <= now,
+      latestEmail: m.latestEmail ?? undefined,
     })),
     total,
     page,

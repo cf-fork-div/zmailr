@@ -55,16 +55,16 @@ td code{font-size:.75rem;background:#0c0a09;padding:2px 6px;border-radius:4px;wo
 .section-title{font-size:1rem;color:#f8fafc;margin-bottom:8px;font-weight:600}
 .section-desc{font-size:.75rem;color:#71717a;margin-bottom:12px}
 .section-title+.section-desc{margin-top:-4px}
-.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;justify-content:center;z-index:100;padding:20px}
-.modal.show{display:flex}
-.modal-box{background:#18181b;padding:24px;border-radius:16px;width:100%;max-width:480px;border:1px solid #27272a}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;padding:20px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.modal.show{display:block}
+.modal-box{background:#18181b;padding:24px;border-radius:16px;width:100%;max-width:480px;border:1px solid #27272a;margin:0 auto;max-height:calc(100dvh - 40px);overflow-y:auto}
 .modal-box h3{margin-bottom:16px;color:#f8fafc}
 .form-group{margin-bottom:12px}
 .form-group label{display:block;font-size:.75rem;color:#a1a1aa;margin-bottom:4px}
 .form-group input,.form-group textarea,.form-group select{width:100%;padding:8px 12px;border:1px solid #3f3f46;border-radius:8px;background:#0c0a09;color:#e2e8f0;font-size:.875rem}
 .form-group textarea{min-height:80px;font-family:monospace}
 .form-group textarea.content-area{min-height:160px;font-family:inherit;white-space:pre-wrap}
-.modal-actions{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
+.modal-actions{display:flex;gap:8px;margin-top:16px;justify-content:flex-end;position:sticky;bottom:0;padding-top:12px;background:inherit;border-top:1px solid #27272a}
 .form-group input[type=checkbox]{width:auto;margin-right:8px}
 .pagination{display:flex;gap:8px;align-items:center;margin-top:16px;flex-wrap:wrap}
 .pagination span{font-size:.875rem;color:#a1a1aa}
@@ -107,6 +107,7 @@ html.light td code{background:#f0f9ff}
 html.light .section-title,html.light .card h4,html.light .modal-box h3,html.light .chart-title{color:#0f172a}
 html.light .section-desc,html.light .hint,html.light .pagination span,html.light .chart-legend{color:#64748b}
 html.light .modal-box{background:#fff;border-color:#bae6fd}
+html.light .modal-actions{border-top-color:#bae6fd}
 html.light .form-group input,html.light .form-group textarea,html.light .form-group select{border-color:#bae6fd;background:#f8fafc;color:#1e293b}
 html.light .card,html.light .chart-wrap{background:#f8fafc;border-color:#bae6fd}
 html.light .chart-empty{color:#94a3b8}

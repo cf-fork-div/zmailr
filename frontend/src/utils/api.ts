@@ -5,6 +5,12 @@ const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
 
 const fetchOpts = { credentials: 'include' as RequestCredentials };
 
+export interface UserMailboxLatestEmail {
+  subject: string;
+  extractedCode: string | null;
+  receivedAt: number;
+}
+
 export interface UserMailboxItem {
   id: string;
   address: string;
@@ -15,6 +21,7 @@ export interface UserMailboxItem {
   ipAddress: string;
   lastAccessed: number;
   isExpired?: boolean;
+  latestEmail?: UserMailboxLatestEmail | null;
 }
 
 export interface UserMailboxesQuery {
@@ -23,6 +30,8 @@ export interface UserMailboxesQuery {
   search?: string;
   page?: number;
   limit?: number;
+  withLatestEmail?: boolean;
+  orderBy?: 'created' | 'latestEmail';
 }
 
 export interface PaginatedResult<T> {
@@ -44,6 +53,8 @@ export const getUserMailboxes = async (
     if (opts.search?.trim()) params.set('search', opts.search.trim());
     if (opts.page != null) params.set('page', String(opts.page));
     if (opts.limit != null) params.set('limit', String(opts.limit));
+    if (opts.withLatestEmail) params.set('withLatestEmail', 'true');
+    if (opts.orderBy === 'latestEmail') params.set('orderBy', 'latestEmail');
     const query = params.toString() ? `?${params.toString()}` : '';
     const response = await fetch(apiUrl(`/api/user/mailboxes${query}`), fetchOpts);
     if (response.status === 401) return { success: false as const, error: 'Unauthorized' };
