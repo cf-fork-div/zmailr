@@ -23,7 +23,8 @@
 
 | 变量 | 必填 | 说明 |
 |------|------|------|
-| `ADMIN_PASSWORD` | 是 | 管理后台密码；同时作为 Session HMAC 密钥（生产请使用强随机串） |
+| `ADMIN_PASSWORD` | 是 | 管理后台登录密码（生产请使用强随机串） |
+| `SESSION_SECRET` | 是 | 用户/管理后台 Session Cookie HMAC 密钥；须与 `ADMIN_PASSWORD` 独立 |
 | `ADMIN_PATH` | 生产必填 | 管理后台 URL 段（UUID）；错误路径返回 404 |
 | `BREVO_API_KEY` | 否 | Secret，勿写入仓库 |
 | `CORS_ALLOWED_ORIGINS` | 否 | 额外浏览器 Origin 白名单（逗号分隔完整 URL）；本地 dev 端口始终允许 |
@@ -125,6 +126,7 @@
 
 - [ ] `ADMIN_PATH` 为 UUID，非 `admin`
 - [ ] `ADMIN_PASSWORD` 强随机，未提交仓库
+- [ ] `SESSION_SECRET` 强随机，已通过 `wrangler secret` / GitHub Actions 注入，未提交仓库
 - [ ] `BREVO_API_KEY` 仅通过 `wrangler secret` / Actions Secret
 - [ ] Email Routing Catch-all 指向本 Worker
 - [ ] 演示账号（若需要）在管理后台 **用户** 中创建，勿依赖硬编码默认密码

@@ -118,6 +118,22 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CI: true
 
+      # 上传 SESSION_SECRET（登录/管理后台 Session 必需；与 ADMIN_PASSWORD 独立）
+      - name: Upload SESSION_SECRET
+        if: env.has_creds == 'true'
+        timeout-minutes: 2
+        run: |
+          if [ -n "$SESSION_SECRET" ]; then
+            echo "$SESSION_SECRET" | pnpm exec wrangler secret put SESSION_SECRET --name zmailr
+          else
+            echo "Warning: SESSION_SECRET not set in GitHub secrets; login/admin sessions will return 503 until configured."
+          fi
+        env:
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CI: true
+
       # 第九步：上传 Brevo API 密钥（可选；未配置时跳过，发信功能不可用）
       - name: Upload BREVO_API_KEY
         if: env.has_creds == 'true'

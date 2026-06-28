@@ -128,32 +128,8 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     await db.exec(`CREATE TABLE IF NOT EXISTS mail_domains (id INTEGER PRIMARY KEY AUTOINCREMENT, domain TEXT UNIQUE NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, is_default INTEGER NOT NULL DEFAULT 0, cloudflare_ready INTEGER NOT NULL DEFAULT 0, brevo_verified INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);`);
     await db.exec(`CREATE TABLE IF NOT EXISTS registration_verifications (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, password_hash TEXT NOT NULL, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, ip TEXT, attempts INTEGER NOT NULL DEFAULT 0);`);
     await db.exec(`CREATE TABLE IF NOT EXISTS password_reset_verifications (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, password_hash TEXT NOT NULL, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, ip TEXT, attempts INTEGER NOT NULL DEFAULT 0);`);
-    await db.exec(`CREATE TABLE IF NOT EXISTS extract_rule_templates (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      domain TEXT NOT NULL,
-      regex TEXT NOT NULL,
-      priority INTEGER NOT NULL DEFAULT 0,
-      title TEXT NOT NULL,
-      remark TEXT,
-      author_user_id INTEGER NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      reject_reason TEXT,
-      reviewed_at INTEGER,
-      install_count INTEGER NOT NULL DEFAULT 0,
-      source_rule_id INTEGER,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      updated_at INTEGER NOT NULL,
-      FOREIGN KEY (author_user_id) REFERENCES users(id) ON DELETE CASCADE
-    );`);
-    await db.exec(`CREATE TABLE IF NOT EXISTS extract_rule_template_installs (
-      user_id INTEGER NOT NULL,
-      template_id INTEGER NOT NULL,
-      user_rule_id INTEGER NOT NULL,
-      installed_at INTEGER NOT NULL,
-      PRIMARY KEY (user_id, template_id),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (template_id) REFERENCES extract_rule_templates(id) ON DELETE CASCADE
-    );`);
+    await db.exec(`CREATE TABLE IF NOT EXISTS extract_rule_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, domain TEXT NOT NULL, regex TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, remark TEXT, author_user_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', reject_reason TEXT, reviewed_at INTEGER, install_count INTEGER NOT NULL DEFAULT 0, source_rule_id INTEGER, created_at INTEGER NOT NULL DEFAULT (unixepoch()), updated_at INTEGER NOT NULL, FOREIGN KEY (author_user_id) REFERENCES users(id) ON DELETE CASCADE);`);
+    await db.exec(`CREATE TABLE IF NOT EXISTS extract_rule_template_installs (user_id INTEGER NOT NULL, template_id INTEGER NOT NULL, user_rule_id INTEGER NOT NULL, installed_at INTEGER NOT NULL, PRIMARY KEY (user_id, template_id), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY (template_id) REFERENCES extract_rule_templates(id) ON DELETE CASCADE);`);
 
     // Phase 2: add columns to existing tables (must run before indexes on those columns)
     await migrateAddColumn(db, 'emails', 'extracted_code', 'TEXT');
