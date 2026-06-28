@@ -1,6 +1,6 @@
 import * as PostalMimeModule from 'postal-mime';
 import { Env, ParsedEmail } from './types';
-import { getMailbox, saveEmail, saveAttachment } from './database';
+import { getMailbox, saveEmail, saveAttachment, recordMailboxLeaseUsageOnReceive } from './database';
 import { extractCode } from './extractor';
 import { resolveEnabledMailDomainNames } from './mail-domains';
 import { extractEmailDomain } from './utils';
@@ -75,6 +75,8 @@ export async function handleEmail(message: any, env: Env): Promise<void> {
       matchedRuleId: extractResult?.ruleId ?? null,
       rawContent,
     });
+
+    await recordMailboxLeaseUsageOnReceive(env.DB, mailbox.id);
 
     // 保存附件（如果有）
     if (email.attachments && email.attachments.length > 0) {

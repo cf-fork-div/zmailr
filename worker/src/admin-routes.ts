@@ -11,6 +11,10 @@ import {
   updateGlobalExtractRule,
   deleteGlobalExtractRule,
   deleteAnyUserExtractRule,
+  listAdminExtractRuleTemplates,
+  approveExtractRuleTemplate,
+  rejectExtractRuleTemplate,
+  deleteExtractRuleTemplate,
   listSentEmails,
   listUsers,
   createUser,
@@ -33,6 +37,8 @@ import {
   toAdminTurnstileView,
   getLegacySendDailyQuota,
   setLegacySendDailyQuota,
+  getMaxUserTokens,
+  setMaxUserTokens,
   listAuditLogs,
   writeAuditLog,
   listMailDomains,
@@ -65,6 +71,7 @@ import {
 import { logRateLimitHit, logApiRequestStat } from './monitoring';
 import { fetchBrevoAccountIfConfigured } from './brevo-stats';
 import { ensureMailDomainsSeeded } from './mail-domains';
+import { applySecurityHeaders } from './security-headers';
 
 async function globalIpRateLimitMiddleware(c: any, next: () => Promise<void>) {
   const rateKey = getGlobalIpRateLimitKey(c.req.header('CF-Connecting-IP'));
@@ -101,6 +108,10 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
 
   admin.use('/api/*', globalIpRateLimitMiddleware);
   admin.use('/api/*', adminRequestStatsMiddleware);
+  admin.use('*', async (c, next) => {
+    await next();
+    applySecurityHeaders(c.res.headers);
+  });
 
   admin.get('/', async (c) => {
     const base = adminPathPrefix(c.env);
@@ -123,7 +134,10 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
         return c.json({ success: false, error: '密码错误' }, 401);
       }
       await clearLoginFailures(c.env.DB, ip, 'admin-login');
-      const cookie = await createAdminSessionCookie(c.env);
+      const cookie = await createAdminSessionCookie(c.env, c.req.raw);
+      if (!cookie) {
+        return c.json({ success: false, error: '未配置 SESSION_SECRET' }, 503);
+      }
       c.executionCtx.waitUntil(
         writeAuditLog(c.env.DB, {
           actorType: 'admin',
@@ -139,7 +153,7 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
   });
 
   admin.post('/logout', (c) => {
-    return c.json({ success: true }, 200, { 'Set-Cookie': clearAdminSessionCookie(c.env) });
+    return c.json({ success: true }, 200, { 'Set-Cookie': clearAdminSessionCookie(c.env, c.req.raw) });
   });
 
   admin.get('/api/stats', async (c) => {
@@ -189,15 +203,17 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
   admin.get('/api/maintenance', async (c) => {
     const authErr = await requireAdmin(c);
     if (authErr) return authErr;
-    const [maintenance, legacySendDailyQuota, turnstile] = await Promise.all([
+    const [maintenance, legacySendDailyQuota, maxUserTokens, turnstile] = await Promise.all([
       getMaintenanceMode(c.env.DB),
       getLegacySendDailyQuota(c.env.DB),
+      getMaxUserTokens(c.env.DB),
       getTurnstileSettings(c.env.DB),
     ]);
     return c.json({
       success: true,
       maintenance,
       legacySendDailyQuota,
+      maxUserTokens,
       turnstile: toAdminTurnstileView(turnstile),
     });
   });
@@ -220,6 +236,10 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
         parseInt(String(body.legacySendDailyQuota), 10)
       );
     }
+    let maxUserTokens = await getMaxUserTokens(c.env.DB);
+    if (body.maxUserTokens !== undefined && body.maxUserTokens !== '') {
+      maxUserTokens = await setMaxUserTokens(c.env.DB, parseInt(String(body.maxUserTokens), 10));
+    }
     let turnstile = await getTurnstileSettings(c.env.DB);
     if (body.turnstile && typeof body.turnstile === 'object') {
       const t = body.turnstile as Record<string, unknown>;
@@ -232,6 +252,7 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
     const detail: Record<string, unknown> = {
       ...(maintenance as unknown as Record<string, unknown>),
       legacySendDailyQuota,
+      maxUserTokens,
       turnstile: toAdminTurnstileView(turnstile),
     };
     c.executionCtx.waitUntil(
@@ -247,6 +268,7 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
       success: true,
       maintenance,
       legacySendDailyQuota,
+      maxUserTokens,
       turnstile: toAdminTurnstileView(turnstile),
     });
   });
@@ -438,6 +460,70 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
     return c.json({ success: true, ...result });
   });
 
+  admin.get('/api/extract-rule-templates', async (c) => {
+    const authErr = await requireAdmin(c);
+    if (authErr) return authErr;
+    const status = (c.req.query('status') || 'all') as 'pending' | 'approved' | 'rejected' | 'all';
+    const templates = await listAdminExtractRuleTemplates(c.env.DB, status);
+    return c.json({ success: true, templates });
+  });
+
+  admin.post('/api/extract-rule-templates/:id/approve', async (c) => {
+    const authErr = await requireAdmin(c);
+    if (authErr) return authErr;
+    const id = parseInt(c.req.param('id'), 10);
+    const template = await approveExtractRuleTemplate(c.env.DB, id);
+    if (!template) return c.json({ success: false, error: '模板不存在' }, 404);
+    c.executionCtx.waitUntil(
+      writeAuditLog(c.env.DB, {
+        actorType: 'admin',
+        actorName: 'admin',
+        action: 'extract_rule_template.approve',
+        detail: { templateId: template.id, domain: template.domain, title: template.title },
+        ip: adminIp(c),
+      })
+    );
+    return c.json({ success: true, template });
+  });
+
+  admin.post('/api/extract-rule-templates/:id/reject', async (c) => {
+    const authErr = await requireAdmin(c);
+    if (authErr) return authErr;
+    const id = parseInt(c.req.param('id'), 10);
+    const body = await c.req.json().catch(() => ({}));
+    const reason = String((body as { reason?: string }).reason ?? '').trim();
+    const template = await rejectExtractRuleTemplate(c.env.DB, id, reason || '未通过审核');
+    if (!template) return c.json({ success: false, error: '模板不存在' }, 404);
+    c.executionCtx.waitUntil(
+      writeAuditLog(c.env.DB, {
+        actorType: 'admin',
+        actorName: 'admin',
+        action: 'extract_rule_template.reject',
+        detail: { templateId: template.id, reason: template.rejectReason },
+        ip: adminIp(c),
+      })
+    );
+    return c.json({ success: true, template });
+  });
+
+  admin.delete('/api/extract-rule-templates/:id', async (c) => {
+    const authErr = await requireAdmin(c);
+    if (authErr) return authErr;
+    const id = parseInt(c.req.param('id'), 10);
+    const ok = await deleteExtractRuleTemplate(c.env.DB, id);
+    if (!ok) return c.json({ success: false, error: '模板不存在' }, 404);
+    c.executionCtx.waitUntil(
+      writeAuditLog(c.env.DB, {
+        actorType: 'admin',
+        actorName: 'admin',
+        action: 'extract_rule_template.delete',
+        detail: { templateId: id },
+        ip: adminIp(c),
+      })
+    );
+    return c.json({ success: true });
+  });
+
   admin.get('/api/sent-emails', async (c) => {
     const authErr = await requireAdmin(c);
     if (authErr) return authErr;
@@ -465,6 +551,10 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
         password: String(body.password),
         role: body.role === 'admin' ? 'admin' : 'user',
         dailySendQuota: parseInt(body.dailySendQuota) || 50,
+        dailyLeaseQuota:
+          body.dailyLeaseQuota !== undefined && body.dailyLeaseQuota !== ''
+            ? parseInt(body.dailyLeaseQuota)
+            : undefined,
         rateLimitPerMin: body.rateLimitPerMin !== undefined ? parseInt(body.rateLimitPerMin) || 60 : undefined,
         rateLimitBurst:
           body.rateLimitBurst !== undefined && body.rateLimitBurst !== '' && body.rateLimitBurst != null
@@ -503,6 +593,10 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
     const user = await updateUser(c.env.DB, userId, {
       role: body.role,
       dailySendQuota: body.dailySendQuota !== undefined ? parseInt(body.dailySendQuota) : undefined,
+      dailyLeaseQuota:
+        body.dailyLeaseQuota !== undefined && body.dailyLeaseQuota !== ''
+          ? parseInt(body.dailyLeaseQuota)
+          : undefined,
       rateLimitPerMin: body.rateLimitPerMin !== undefined ? parseInt(body.rateLimitPerMin) || 60 : undefined,
       rateLimitBurst:
         body.rateLimitBurst !== undefined

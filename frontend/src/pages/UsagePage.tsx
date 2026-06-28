@@ -35,9 +35,13 @@ const UsagePage: React.FC = () => {
   const [storedTokenPlaintext, setStoredTokenPlaintext] = useState<string | null>(null);
 
   const quota = user?.dailySendQuota ?? 0;
+  const leaseQuota = user?.dailyLeaseQuota ?? 300;
   const sendCount = usage?.sendCount ?? 0;
+  const leaseCount = usage?.leaseCount ?? 0;
   const quotaTotalLabel = quota < 0 ? t('auth.unlimited') : String(quota);
+  const leaseQuotaTotalLabel = leaseQuota < 0 ? t('auth.unlimited') : String(leaseQuota);
   const outboxQuotaValue = `${sendCount} / ${quotaTotalLabel}`;
+  const leaseQuotaValue = `${leaseCount} / ${leaseQuotaTotalLabel}`;
 
   const token = stats?.token ?? null;
   const tokenExpiringSoon = token ? expiresWithinDays(token.expiresAt, 7) : false;
@@ -206,12 +210,18 @@ const UsagePage: React.FC = () => {
 
       <section className="space-y-3">
         <SectionHeading title={t('dashboard.sectionInbox')} />
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             label={t('dashboard.randomMailbox')}
             value={stats?.mailboxesCount ?? 0}
             icon="fas fa-envelope-open"
             hint={t('dashboard.randomMailboxHint')}
+          />
+          <StatCard
+            label={t('dashboard.leaseCount')}
+            value={leaseQuotaValue}
+            icon="fas fa-at"
+            hint={t('dashboard.leaseCountHint')}
           />
           <StatCard
             label={t('dashboard.messagesReceived')}

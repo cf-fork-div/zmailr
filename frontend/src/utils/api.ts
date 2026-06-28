@@ -292,8 +292,11 @@ export interface AuthUser {
   username: string;
   role: string;
   dailySendQuota: number;
+  dailyLeaseQuota?: number;
   sendCountToday?: number;
   sendRemaining?: number;
+  leaseCountToday?: number;
+  leaseRemaining?: number;
 }
 
 export interface AuthUsage {
@@ -301,6 +304,7 @@ export interface AuthUsage {
   leaseCount: number;
   usageDate: string;
   sendRemaining?: number;
+  leaseRemaining?: number;
 }
 
 export interface AuthTokenSummary {
@@ -710,6 +714,119 @@ export const deleteUserExtractRule = async (id: number) => {
     });
     const data = await response.json();
     if (data.success) return { success: true as const };
+    return { success: false as const, error: data.error };
+  } catch {
+    return { success: false as const, error: 'Network error' };
+  }
+};
+
+export type ExtractRuleTemplateStatus = 'pending' | 'approved' | 'rejected';
+
+export interface ExtractRuleTemplateItem {
+  id: number;
+  domain: string;
+  regex: string;
+  priority: number;
+  title: string;
+  remark: string | null;
+  authorUserId: number;
+  authorUsername?: string;
+  status: ExtractRuleTemplateStatus;
+  rejectReason: string | null;
+  reviewedAt: number | null;
+  installCount: number;
+  sourceRuleId: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PopularTemplateDomain {
+  domain: string;
+  count: number;
+}
+
+export const browseExtractRuleTemplates = async (params?: {
+  domain?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}) => {
+  try {
+    const qs = new URLSearchParams();
+    if (params?.domain) qs.set('domain', params.domain);
+    if (params?.q) qs.set('q', params.q);
+    if (params?.limit != null) qs.set('limit', String(params.limit));
+    if (params?.offset != null) qs.set('offset', String(params.offset));
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    const response = await fetch(apiUrl(`/api/user/extract-rule-templates${suffix}`), fetchOpts);
+    if (response.status === 401) return { success: false as const, error: 'Unauthorized' };
+    const data = await response.json();
+    if (data.success) {
+      return {
+        success: true as const,
+        templates: data.templates as ExtractRuleTemplateItem[],
+        total: data.total as number,
+        installedTemplateIds: (data.installedTemplateIds ?? []) as number[],
+        popularDomains: (data.popularDomains ?? []) as PopularTemplateDomain[],
+      };
+    }
+    return { success: false as const, error: data.error };
+  } catch {
+    return { success: false as const, error: 'Network error' };
+  }
+};
+
+export const getMyExtractRuleTemplateSubmissions = async () => {
+  try {
+    const response = await fetch(apiUrl('/api/user/extract-rule-templates/mine'), fetchOpts);
+    if (response.status === 401) return { success: false as const, error: 'Unauthorized' };
+    const data = await response.json();
+    if (data.success) {
+      return { success: true as const, submissions: data.submissions as ExtractRuleTemplateItem[] };
+    }
+    return { success: false as const, error: data.error };
+  } catch {
+    return { success: false as const, error: 'Network error' };
+  }
+};
+
+export const publishExtractRuleTemplate = async (params: {
+  title: string;
+  domain?: string;
+  regex?: string;
+  priority?: number;
+  remark?: string | null;
+  ruleId?: number;
+}) => {
+  try {
+    const response = await fetch(apiUrl('/api/user/extract-rule-templates'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(params),
+    });
+    const data = await response.json();
+    if (data.success) return { success: true as const, template: data.template as ExtractRuleTemplateItem };
+    return { success: false as const, error: data.error };
+  } catch {
+    return { success: false as const, error: 'Network error' };
+  }
+};
+
+export const installExtractRuleTemplate = async (templateId: number) => {
+  try {
+    const response = await fetch(apiUrl(`/api/user/extract-rule-templates/${templateId}/install`), {
+      method: 'POST',
+      credentials: 'include',
+    });
+    const data = await response.json();
+    if (data.success) {
+      return {
+        success: true as const,
+        rule: data.rule as ExtractRuleItem,
+        alreadyInstalled: !!data.alreadyInstalled,
+      };
+    }
     return { success: false as const, error: data.error };
   } catch {
     return { success: false as const, error: 'Network error' };

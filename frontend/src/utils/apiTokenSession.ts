@@ -1,12 +1,22 @@
 const STORAGE_KEY = 'zmail_api_tokens';
 const LEGACY_SESSION_KEY = 'zmail_api_token';
+/** @deprecated Migrated from pre-sessionStorage localStorage copy feature. */
+const LEGACY_LOCAL_KEY = 'zmail_api_tokens';
 
 type TokenMap = Record<string, string>;
 type UserTokenStore = Record<string, TokenMap>;
 
 function readStore(): UserTokenStore {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    let raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      const legacyLocal = localStorage.getItem(LEGACY_LOCAL_KEY);
+      if (legacyLocal) {
+        sessionStorage.setItem(STORAGE_KEY, legacyLocal);
+        localStorage.removeItem(LEGACY_LOCAL_KEY);
+        raw = legacyLocal;
+      }
+    }
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -16,7 +26,7 @@ function readStore(): UserTokenStore {
 }
 
 function writeStore(store: UserTokenStore) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(store));
 }
 
 function userKey(userId: number) {
@@ -80,7 +90,7 @@ export function pruneStoredTokens(userId: number, validTokenIds: number[]) {
   writeStore(store);
 }
 
-/** One-time migration from sessionStorage (pre-localStorage copy feature). */
+/** One-time migration from legacy sessionStorage key (pre per-user store). */
 export function migrateLegacySessionTokens(userId: number, tokenIds: number[]) {
   try {
     const raw = sessionStorage.getItem(LEGACY_SESSION_KEY);

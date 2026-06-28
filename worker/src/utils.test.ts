@@ -12,7 +12,8 @@ import {
   generateApiToken,
   API_TOKEN_PREFIX,
 } from './utils';
-import { MAX_USER_TOKENS } from './types';
+import { DEFAULT_MAX_USER_TOKENS } from './types';
+import { normalizeMaxUserTokens } from './database';
 
 describe('shouldTouchTokenLastUsed', () => {
   it('touches when last_used_at is null', () => {
@@ -62,6 +63,11 @@ describe('validateExtractRuleInput', () => {
 
   it('rejects empty regex', () => {
     const result = validateExtractRuleInput({ domain: '*', regex: '  ' });
+    assert.equal(result.ok, false);
+  });
+
+  it('rejects nested quantifier patterns', () => {
+    const result = validateExtractRuleInput({ domain: '*', regex: '(a+)+' });
     assert.equal(result.ok, false);
   });
 });
@@ -162,10 +168,17 @@ describe('generateApiToken', () => {
   });
 });
 
-describe('MAX_USER_TOKENS', () => {
-  it('allows up to 3 tokens per user', () => {
-    assert.equal(MAX_USER_TOKENS, 3);
-    assert.equal(2 >= MAX_USER_TOKENS, false);
-    assert.equal(3 >= MAX_USER_TOKENS, true);
+describe('normalizeMaxUserTokens', () => {
+  it('defaults invalid values to DEFAULT_MAX_USER_TOKENS', () => {
+    assert.equal(normalizeMaxUserTokens(NaN), DEFAULT_MAX_USER_TOKENS);
+    assert.equal(normalizeMaxUserTokens(0), 1);
+    assert.equal(normalizeMaxUserTokens(-5), 1);
+  });
+
+  it('clamps to 1–100', () => {
+    assert.equal(normalizeMaxUserTokens(3), 3);
+    assert.equal(normalizeMaxUserTokens(100), 100);
+    assert.equal(normalizeMaxUserTokens(101), 100);
+    assert.equal(normalizeMaxUserTokens(2.7), 2);
   });
 });

@@ -35,12 +35,12 @@ describe('OPENAPI_SPEC', () => {
     assert.equal(OPENAPI_SPEC.components.securitySchemes.bearerAuth.type, 'http');
   });
 
-  it('documents max 3 user API tokens on create endpoint', () => {
+  it('documents per-user token limit on create endpoint', () => {
     const post = OPENAPI_SPEC.paths['/api/user/tokens']?.post;
     assert.ok(post);
-    assert.match(post!.summary ?? '', /3/);
+    assert.match(post!.summary ?? '', /limit/i);
     const bad400 = post!.responses?.['400'];
     assert.ok(bad400);
-    assert.match((bad400 as { description?: string }).description ?? '', /3/);
+    assert.match((bad400 as { description?: string }).description ?? '', /limit/i);
   });
 });

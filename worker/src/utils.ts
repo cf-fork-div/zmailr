@@ -1,26 +1,26 @@
 /**
- * 生成随机字符串
- * @param length 字符串长度
- * @returns 随机字符串
+ * 生成随机字符串（密码学安全）
  */
 export function generateRandomString(length: number): string {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-    for (let i = 0; i < length; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(bytes[i] % chars.length);
   }
-  
-  /**
-   * 生成随机邮箱地址
-   * @returns 随机邮箱地址
-   */
-  export function generateRandomAddress(): string {
-    // 生成8-12位随机字符
-    const length = Math.floor(Math.random() * 5) + 8;
-    return generateRandomString(length);
-  }
+  return result;
+}
+
+/**
+ * 生成随机邮箱地址
+ */
+export function generateRandomAddress(): string {
+  const lengthBytes = new Uint8Array(1);
+  crypto.getRandomValues(lengthBytes);
+  const length = (lengthBytes[0] % 5) + 8;
+  return generateRandomString(length);
+}
   
   /**
    * 生成唯一ID
@@ -139,6 +139,18 @@ export function generateRandomString(length: number): string {
   /** Sender domain for extract rules: * or lowercase hostname (e.g. example.com) */
   const EXTRACT_RULE_DOMAIN = /^(\*|[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*)$/;
 
+  export const MAX_EXTRACT_REGEX_LENGTH = 200;
+  export const MAX_REGEX_MATCH_TEXT_LENGTH = 16_384;
+
+  /** Reject patterns prone to catastrophic backtracking (e.g. (a+)+). */
+  export function isDangerousRegexPattern(pattern: string): boolean {
+    if (pattern.length > MAX_EXTRACT_REGEX_LENGTH) return true;
+    if (/\([^)]*[+*][^)]*\)[+*?{]/.test(pattern)) return true;
+    if (/\(\.\*\)[+*?]/.test(pattern)) return true;
+    if (/\(\.\+\)[+*?]/.test(pattern)) return true;
+    return false;
+  }
+
   export function validateExtractRuleInput(params: {
     domain?: string;
     regex?: string;
@@ -146,6 +158,12 @@ export function generateRandomString(length: number): string {
     const regex = params.regex?.trim();
     if (!regex) {
       return { ok: false, error: '缺少 regex' };
+    }
+    if (regex.length > MAX_EXTRACT_REGEX_LENGTH) {
+      return { ok: false, error: `正则表达式过长（最多 ${MAX_EXTRACT_REGEX_LENGTH} 字符）` };
+    }
+    if (isDangerousRegexPattern(regex)) {
+      return { ok: false, error: '正则表达式存在嵌套量词等高风险模式，请简化' };
     }
     try {
       new RegExp(regex, 'i');

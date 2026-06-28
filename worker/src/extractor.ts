@@ -1,6 +1,7 @@
 import { D1Database } from '@cloudflare/workers-types';
 import { getEnabledExtractRules } from './database';
 import type { ExtractRule } from './types';
+import { MAX_REGEX_MATCH_TEXT_LENGTH } from './utils';
 
 /** 通用兜底正则（支持「验证码为/是：123456」等常见中文格式） */
 export const GENERIC_CODE_REGEX =
@@ -211,8 +212,11 @@ export function extractLink(text: string, html?: string): string | null {
 
 export function matchWithRegex(text: string, pattern: string): string | null {
   try {
+    const slice = text.length > MAX_REGEX_MATCH_TEXT_LENGTH
+      ? text.slice(0, MAX_REGEX_MATCH_TEXT_LENGTH)
+      : text;
     const regex = new RegExp(pattern, 'i');
-    const match = text.match(regex);
+    const match = slice.match(regex);
     if (!match) return null;
     if (match[1]) return match[1];
     const digits = match[0].match(/\d{4,8}/);

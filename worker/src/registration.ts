@@ -1,5 +1,5 @@
 import { D1Database } from '@cloudflare/workers-types';
-import { Env } from './types';
+import { Env, DEFAULT_DAILY_LEASE_QUOTA } from './types';
 import { hashPassword, hashToken } from './crypto';
 import {
   createRegistrationVerification,
@@ -205,15 +205,11 @@ export async function verifyRegistrationCode(
 
   const user = await createUser(db, {
     username: email,
-    password: '__pending__',
+    passwordHash: pending.passwordHash,
     role: 'user',
     dailySendQuota: REGISTRATION_DAILY_SEND_QUOTA,
+    dailyLeaseQuota: DEFAULT_DAILY_LEASE_QUOTA,
   });
-
-  await db
-    .prepare(`UPDATE users SET password_hash = ? WHERE id = ?`)
-    .bind(pending.passwordHash, user.id)
-    .run();
 
   await deleteRegistrationVerification(db, pending.id);
   return { ok: true, userId: user.id, username: email };

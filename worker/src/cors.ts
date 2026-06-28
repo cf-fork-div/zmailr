@@ -10,7 +10,7 @@ const LOCAL_DEV_ORIGINS = [
   'http://127.0.0.1:4173',
 ];
 
-function parseDomainList(raw: string | undefined): string[] {
+function parseOriginList(raw: string | undefined): string[] {
   if (!raw?.trim()) return [];
   return raw
     .split(',')
@@ -18,39 +18,11 @@ function parseDomainList(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
-/** Build https origins from MAIL_DOMAIN / VITE_EMAIL_DOMAIN entries. */
-function originsFromMailDomains(env: Pick<Env, 'MAIL_DOMAIN' | 'VITE_EMAIL_DOMAIN'>): string[] {
-  const domains = new Set<string>();
-  for (const d of parseDomainList(env.MAIL_DOMAIN)) domains.add(d);
-  for (const d of parseDomainList(env.VITE_EMAIL_DOMAIN)) domains.add(d);
-  const origins: string[] = [];
-  for (const domain of domains) {
-    origins.push(`https://${domain}`);
-    origins.push(`http://${domain}`);
-  }
-  return origins;
-}
-
-/** Optional comma-separated full origin URLs (e.g. https://app.example.com). */
-function originsFromEnvList(raw: string | undefined): string[] {
-  return parseDomainList(raw);
-}
-
+/** Browser SPA origins allowed to call the API with credentials (not mail domains). */
 export function resolveAllowedCorsOrigins(
-  env: Pick<Env, 'MAIL_DOMAIN' | 'VITE_EMAIL_DOMAIN' | 'CORS_ALLOWED_ORIGINS'>,
-  extraDomains?: string[]
+  env: Pick<Env, 'CORS_ALLOWED_ORIGINS'>
 ): Set<string> {
-  const extraOrigins: string[] = [];
-  for (const domain of extraDomains ?? []) {
-    extraOrigins.push(`https://${domain}`);
-    extraOrigins.push(`http://${domain}`);
-  }
-  return new Set([
-    ...LOCAL_DEV_ORIGINS,
-    ...originsFromMailDomains(env),
-    ...originsFromEnvList(env.CORS_ALLOWED_ORIGINS),
-    ...extraOrigins,
-  ]);
+  return new Set([...LOCAL_DEV_ORIGINS, ...parseOriginList(env.CORS_ALLOWED_ORIGINS)]);
 }
 
 /**
@@ -59,10 +31,9 @@ export function resolveAllowedCorsOrigins(
  */
 export function matchCorsOrigin(
   origin: string | undefined,
-  env: Pick<Env, 'MAIL_DOMAIN' | 'VITE_EMAIL_DOMAIN' | 'CORS_ALLOWED_ORIGINS'>,
-  extraDomains?: string[]
+  env: Pick<Env, 'CORS_ALLOWED_ORIGINS'>
 ): string | null {
   if (!origin) return null;
-  const allowed = resolveAllowedCorsOrigins(env, extraDomains);
+  const allowed = resolveAllowedCorsOrigins(env);
   return allowed.has(origin) ? origin : null;
 }

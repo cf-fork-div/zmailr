@@ -6,12 +6,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { createUserToken, deleteUserToken, UserTokenItem } from '../utils/api';
 
 const ALL_SCOPES = ['lease', 'mail', 'send'] as const;
-const MAX_USER_TOKENS = 3;
+const DEFAULT_MAX_USER_TOKENS = 3;
 
 const AccountPage: React.FC = () => {
   const { t } = useTranslation();
   const { user, usage, isLoading, isAuthenticated, logout, refresh } = useAuth();
   const [tokens, setTokens] = useState<UserTokenItem[]>([]);
+  const [maxTokens, setMaxTokens] = useState(DEFAULT_MAX_USER_TOKENS);
   const [tokensLoading, setTokensLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [newTokenName, setNewTokenName] = useState('');
@@ -25,7 +26,10 @@ const AccountPage: React.FC = () => {
     try {
       const res = await fetch('/api/user/tokens', { credentials: 'include' });
       const data = await res.json();
-      if (data.success) setTokens(data.tokens);
+      if (data.success) {
+        setTokens(data.tokens);
+        setMaxTokens(typeof data.maxTokens === 'number' ? data.maxTokens : DEFAULT_MAX_USER_TOKENS);
+      }
     } finally {
       setTokensLoading(false);
     }
@@ -120,10 +124,10 @@ const AccountPage: React.FC = () => {
             <div className="flex items-center gap-2">
               <h2 className="font-semibold">{t('auth.apiTokens')}</h2>
               <span className="text-xs text-muted-foreground">
-                {t('tokens.tokenCount', { count: tokens.length, max: MAX_USER_TOKENS })}
+                {t('tokens.tokenCount', { count: tokens.length, max: maxTokens })}
               </span>
             </div>
-            {tokens.length < MAX_USER_TOKENS && (
+            {tokens.length < maxTokens && (
               <button
                 onClick={() => setShowCreate(!showCreate)}
                 className="text-sm px-3 py-1.5 bg-primary text-primary-foreground rounded-md"

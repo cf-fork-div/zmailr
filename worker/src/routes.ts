@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { Env, ApiAuthContext, TokenScope, User, Mailbox, Email, MAX_USER_TOKENS } from './types';
+import { Env, ApiAuthContext, TokenScope, User, Mailbox, Email, DEFAULT_DAILY_LEASE_QUOTA } from './types';
 import { 
   createMailbox, 
   getMailbox,
@@ -25,6 +25,14 @@ import {
   createExtractRule,
   updateUserExtractRule,
   deleteUserExtractRule,
+  listApprovedExtractRuleTemplates,
+  listUserExtractRuleTemplateSubmissions,
+  listPopularExtractRuleTemplateDomains,
+  listInstalledTemplateIdsForUser,
+  createExtractRuleTemplateSubmission,
+  countPendingExtractRuleTemplatesByUser,
+  installExtractRuleTemplate,
+  getExtractRuleById,
   listUserSentEmails,
   getUserSentEmailById,
   listUserTokens,
@@ -37,8 +45,9 @@ import {
   countUserExtractRules,
   getUserTokenSummary,
   checkSendQuota,
+  checkLeaseQuota,
   incrementSendUsage,
-  incrementLeaseUsage,
+  recordMailboxLeaseUsageOnReceive,
   listMailboxesByUser,
   cleanupExpiredMailboxesForUser,
   findInstantLatestEmailWithCode,
@@ -51,6 +60,8 @@ import {
   getRegistrationSettings,
   writeAuditLog,
   getLegacySendDailyQuota,
+  getMaxUserTokens,
+  getUserById,
 } from './database';
 import { generateRandomAddress, parseMailboxAddress, getCurrentTimestamp, validateExtractRuleInput, isValidEmailAddress } from './utils';
 import { reExtractSingleEmail, scheduleReExtractAfterRuleChange } from './re-extract';
@@ -94,6 +105,7 @@ import { resolveAttachmentBytes } from './r2-attachments';
 import { matchCorsOrigin } from './cors';
 import { apiInternalError } from './http-response';
 import { runHealthChecks } from './health';
+import { applySecurityHeaders } from './security-headers';
 import { resolveTurnstileSettings, verifyTurnstileToken } from './turnstile';
 import {
   sendRegistrationVerificationCode,
@@ -149,12 +161,17 @@ app.use('/*', async (c, next) => {
 
 // CORS：仅允许配置的域名 + 本地开发源；拒绝未知 Origin
 app.use('/*', cors({
-  origin: (origin, c) => matchCorsOrigin(origin, c.env, c.get('enabledMailDomains')),
+  origin: (origin, c) => matchCorsOrigin(origin, c.env),
   credentials: true,
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
   maxAge: 86400,
 }));
+
+app.use('/*', async (c, next) => {
+  await next();
+  applySecurityHeaders(c.res.headers);
+});
 
 app.onError((error, c) => {
   console.error('未捕获的路由异常:', error);
@@ -621,7 +638,10 @@ app.post('/api/auth/login', async (c) => {
       return c.json({ success: false, error: '用户名或密码错误' }, 401);
     }
     await clearLoginFailures(c.env.DB, ip);
-    const cookie = await createUserSessionCookie(c.env, user.id);
+    const cookie = await createUserSessionCookie(c.env, user.id, user.sessionVersion, c.req.raw);
+    if (!cookie) {
+      return c.json({ success: false, error: '服务器未配置 SESSION_SECRET' }, 503);
+    }
     c.executionCtx.waitUntil(
       writeAuditLog(c.env.DB, {
         actorType: 'user',
@@ -738,7 +758,16 @@ app.post('/api/auth/register/verify', async (c) => {
     }
 
     await clearLoginFailures(c.env.DB, ip, 'register-verify');
-    const cookie = await createUserSessionCookie(c.env, result.userId);
+    const registeredUser = await getUserById(c.env.DB, result.userId);
+    const cookie = await createUserSessionCookie(
+      c.env,
+      result.userId,
+      registeredUser?.sessionVersion ?? 0,
+      c.req.raw
+    );
+    if (!cookie) {
+      return c.json({ success: false, error: '服务器未配置 SESSION_SECRET' }, 503);
+    }
     c.executionCtx.waitUntil(
       writeAuditLog(c.env.DB, {
         actorType: 'user',
@@ -851,7 +880,16 @@ app.post('/api/auth/password-reset/verify', async (c) => {
     }
 
     await clearLoginFailures(c.env.DB, ip, 'password-reset-verify');
-    const cookie = await createUserSessionCookie(c.env, result.userId);
+    const resetUser = await getUserById(c.env.DB, result.userId);
+    const cookie = await createUserSessionCookie(
+      c.env,
+      result.userId,
+      resetUser?.sessionVersion ?? 0,
+      c.req.raw
+    );
+    if (!cookie) {
+      return c.json({ success: false, error: '服务器未配置 SESSION_SECRET' }, 503);
+    }
     c.executionCtx.waitUntil(
       writeAuditLog(c.env.DB, {
         actorType: 'user',
@@ -872,7 +910,7 @@ app.post('/api/auth/password-reset/verify', async (c) => {
 });
 
 app.post('/api/auth/logout', (c) => {
-  return c.json({ success: true }, 200, { 'Set-Cookie': clearUserSessionCookie() });
+  return c.json({ success: true }, 200, { 'Set-Cookie': clearUserSessionCookie(c.req.raw) });
 });
 
 app.get('/api/auth/me', async (c) => {
@@ -889,6 +927,9 @@ app.get('/api/auth/me', async (c) => {
   const sendRemaining = user.dailySendQuota < 0
     ? -1
     : Math.max(0, user.dailySendQuota - usage.sendCount);
+  const leaseRemaining = user.dailyLeaseQuota < 0
+    ? -1
+    : Math.max(0, user.dailyLeaseQuota - usage.leaseCount);
   return c.json({
     success: true,
     user: {
@@ -896,14 +937,18 @@ app.get('/api/auth/me', async (c) => {
       username: user.username,
       role: user.role,
       dailySendQuota: user.dailySendQuota,
+      dailyLeaseQuota: user.dailyLeaseQuota,
       sendCountToday: usage.sendCount,
       sendRemaining,
+      leaseCountToday: usage.leaseCount,
+      leaseRemaining,
     },
     usage: {
       sendCount: usage.sendCount,
       leaseCount: usage.leaseCount,
       usageDate: usage.usageDate,
       sendRemaining,
+      leaseRemaining,
     },
     stats: {
       mailboxesCount,
@@ -914,13 +959,18 @@ app.get('/api/auth/me', async (c) => {
   });
 });
 
-function buildQuotaPayload(user: User, sentToday: number) {
-  const unlimited = user.dailySendQuota < 0;
+function buildQuotaPayload(user: User, usage: { sendCount: number; leaseCount: number }) {
+  const sendUnlimited = user.dailySendQuota < 0;
+  const leaseUnlimited = user.dailyLeaseQuota < 0;
   return {
     dailySendQuota: user.dailySendQuota,
-    sentToday,
-    remaining: unlimited ? null : Math.max(0, user.dailySendQuota - sentToday),
-    unlimited,
+    sentToday: usage.sendCount,
+    remaining: sendUnlimited ? null : Math.max(0, user.dailySendQuota - usage.sendCount),
+    unlimited: sendUnlimited,
+    dailyLeaseQuota: user.dailyLeaseQuota,
+    leasedToday: usage.leaseCount,
+    leaseRemaining: leaseUnlimited ? null : Math.max(0, user.dailyLeaseQuota - usage.leaseCount),
+    leaseUnlimited,
   };
 }
 
@@ -930,7 +980,7 @@ app.get('/api/user/quota', async (c) => {
     return c.json({ success: false, error: '未授权' }, 401);
   }
   const usage = await getDailyUsage(c.env.DB, user.id);
-  return c.json(buildQuotaPayload(user, usage.sendCount));
+  return c.json(buildQuotaPayload(user, usage));
 });
 
 // ─── 用户 Token 管理（会话鉴权） ─────────────────────────────
@@ -939,8 +989,11 @@ app.get('/api/user/tokens', async (c) => {
   const authErr = await requireUserSession(c);
   if (authErr) return authErr;
   const user = c.get('user')!;
-  const tokens = await listUserTokens(c.env.DB, user.id);
-  return c.json({ success: true, tokens });
+  const [tokens, maxTokens] = await Promise.all([
+    listUserTokens(c.env.DB, user.id),
+    getMaxUserTokens(c.env.DB),
+  ]);
+  return c.json({ success: true, tokens, maxTokens });
 });
 
 app.post('/api/user/tokens', async (c) => {
@@ -957,10 +1010,11 @@ app.post('/api/user/tokens', async (c) => {
     return c.json({ success: false, error: '至少选择一个 scope' }, 400);
   }
   const existingCount = await countUserTokens(c.env.DB, user.id);
-  if (existingCount >= MAX_USER_TOKENS) {
+  const maxTokens = await getMaxUserTokens(c.env.DB);
+  if (existingCount >= maxTokens) {
     return c.json({
       success: false,
-      error: `每位用户最多可创建 ${MAX_USER_TOKENS} 个 API Token，请先删除现有 Token 后再创建。`,
+      error: `每位用户最多可创建 ${maxTokens} 个 API Token，请先删除现有 Token 后再创建。`,
     }, 400);
   }
   const token = await createUserToken(c.env.DB, user.id, {
@@ -1070,6 +1124,117 @@ app.delete('/api/user/extract-rules/:id', async (c) => {
   const ok = await deleteUserExtractRule(c.env.DB, parseInt(c.req.param('id'), 10), user.id);
   if (!ok) return c.json({ success: false, error: '规则不存在' }, 404);
   return c.json({ success: true });
+});
+
+// ─── 规则市场（用户发布 + 管理员审核后可见） ─────────────────
+
+const MAX_PENDING_TEMPLATE_SUBMISSIONS = 10;
+
+app.get('/api/user/extract-rule-templates', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const domain = c.req.query('domain') || undefined;
+  const q = c.req.query('q') || undefined;
+  const limit = parseInt(c.req.query('limit') || '50', 10);
+  const offset = parseInt(c.req.query('offset') || '0', 10);
+  const [{ templates, total }, installedTemplateIds, popularDomains] = await Promise.all([
+    listApprovedExtractRuleTemplates(c.env.DB, { domain, q, limit, offset }),
+    listInstalledTemplateIdsForUser(c.env.DB, user.id),
+    listPopularExtractRuleTemplateDomains(c.env.DB),
+  ]);
+  return c.json({ success: true, templates, total, installedTemplateIds, popularDomains });
+});
+
+app.get('/api/user/extract-rule-templates/mine', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const submissions = await listUserExtractRuleTemplateSubmissions(c.env.DB, user.id);
+  return c.json({ success: true, submissions });
+});
+
+app.post('/api/user/extract-rule-templates', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const body = await c.req.json();
+
+  let domain = body.domain as string | undefined;
+  let regex = body.regex as string | undefined;
+  let priority = body.priority as number | undefined;
+  let remark = body.remark as string | null | undefined;
+  const sourceRuleId = body.ruleId != null ? parseInt(String(body.ruleId), 10) : null;
+
+  if (sourceRuleId != null && Number.isFinite(sourceRuleId)) {
+    const sourceRule = await getExtractRuleById(c.env.DB, sourceRuleId);
+    if (!sourceRule || sourceRule.userId !== user.id) {
+      return c.json({ success: false, error: '源规则不存在或无权发布' }, 404);
+    }
+    domain = sourceRule.domain;
+    regex = sourceRule.regex;
+    priority = sourceRule.priority;
+    remark = remark ?? sourceRule.remark;
+  }
+
+  const validated = validateExtractRuleInput({ domain, regex });
+  if (!validated.ok) return c.json({ success: false, error: validated.error }, 400);
+
+  const title = String(body.title ?? '').trim();
+  if (!title) return c.json({ success: false, error: '请填写规则标题' }, 400);
+  if (title.length > 120) return c.json({ success: false, error: '标题不能超过 120 字' }, 400);
+
+  const pendingCount = await countPendingExtractRuleTemplatesByUser(c.env.DB, user.id);
+  if (pendingCount >= MAX_PENDING_TEMPLATE_SUBMISSIONS) {
+    return c.json({ success: false, error: `待审核规则过多（最多 ${MAX_PENDING_TEMPLATE_SUBMISSIONS} 条），请等待审核后再提交` }, 400);
+  }
+
+  const template = await createExtractRuleTemplateSubmission(c.env.DB, user.id, {
+    domain: validated.domain,
+    regex: validated.regex,
+    priority: priority ?? 0,
+    title,
+    remark: remark ?? null,
+    sourceRuleId: sourceRuleId && Number.isFinite(sourceRuleId) ? sourceRuleId : null,
+  });
+
+  c.executionCtx.waitUntil(
+    writeAuditLog(c.env.DB, {
+      actorType: 'user',
+      actorId: user.id,
+      actorName: user.username,
+      action: 'extract_rule_template.submit',
+      detail: { templateId: template.id, domain: template.domain, title: template.title },
+      ip: getClientIp(c.req.raw),
+    })
+  );
+
+  return c.json({ success: true, template });
+});
+
+app.post('/api/user/extract-rule-templates/:id/install', async (c) => {
+  const authErr = await requireUserSession(c);
+  if (authErr) return authErr;
+  const user = c.get('user')!;
+  const templateId = parseInt(c.req.param('id'), 10);
+  if (Number.isNaN(templateId)) {
+    return c.json({ success: false, error: '无效的模板 ID' }, 400);
+  }
+
+  const result = await installExtractRuleTemplate(c.env.DB, user.id, templateId);
+  if (!result) return c.json({ success: false, error: '模板不存在或未通过审核' }, 404);
+
+  if (result.alreadyInstalled) {
+    return c.json({ success: true, rule: result.rule, alreadyInstalled: true });
+  }
+
+  scheduleReExtractAfterRuleChange(c.executionCtx, c.env.DB, {
+    userId: user.id,
+    domain: result.rule.domain,
+    enabled: result.rule.enabled,
+  });
+
+  return c.json({ success: true, rule: result.rule, alreadyInstalled: false });
 });
 
 // ─── 用户公告（会话鉴权） ─────────────────────────────────────
@@ -1323,7 +1488,15 @@ app.post('/api/user/mailboxes', async (c) => {
     }
 
     const ip = getClientIp(c.req.raw);
-    const address = body.address || generateRandomAddress();
+    const isRandomAddress = !body.address || String(body.address).trim() === '';
+    const address = isRandomAddress ? generateRandomAddress() : String(body.address).trim();
+
+    if (isRandomAddress) {
+      const quotaCheck = await checkLeaseQuota(c.env.DB, user.id, user.dailyLeaseQuota);
+      if (!quotaCheck.ok) {
+        return c.json({ success: false, error: quotaCheck.error }, 429);
+      }
+    }
 
     const existingMailbox = await getMailbox(c.env.DB, address);
     if (existingMailbox) {
@@ -1556,17 +1729,22 @@ app.post('/api/lease', async (c) => {
     const address = generateRandomAddress();
     const ip = getClientIp(c.req.raw);
 
+    if (auth.type === 'user' && auth.userId) {
+      const leaseQuota = auth.dailyLeaseQuota ?? DEFAULT_DAILY_LEASE_QUOTA;
+      const quotaCheck = await checkLeaseQuota(c.env.DB, auth.userId, leaseQuota);
+      if (!quotaCheck.ok) {
+        return c.json({ success: false, error: quotaCheck.error }, 429);
+      }
+    }
+
     const mailbox = await createMailbox(c.env.DB, {
       address,
       expiresInHours: 24,
       ipAddress: ip,
       userId: auth.type === 'user' ? auth.userId : null,
+      legacyTokenId: auth.type === 'legacy' ? auth.tokenId : null,
       mailDomain,
     });
-
-    if (auth.type === 'user' && auth.userId) {
-      await incrementLeaseUsage(c.env.DB, auth.userId);
-    }
 
     return c.json({
       success: true,
@@ -1691,6 +1869,7 @@ app.post('/api/send', async (c) => {
       allowedDomains,
       mode: fromMode,
       userId: auth.userId,
+      legacyTokenId: auth.type === 'legacy' ? auth.tokenId : undefined,
       ipAddress: getClientIp(c.req.raw),
     });
     if (!fromResult.ok) {

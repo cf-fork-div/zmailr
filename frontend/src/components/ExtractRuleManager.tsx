@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import ExtractRuleMarketplace, { PublishRuleModal } from './ExtractRuleMarketplace';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/utils';
 import {
@@ -36,6 +37,7 @@ const ExtractRuleManager: React.FC<ExtractRuleManagerProps> = ({ prefillDomain, 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
+  const [publishTarget, setPublishTarget] = useState<ExtractRuleItem | null>(null);
 
   const loadRules = useCallback(async () => {
     setLoading(true);
@@ -137,6 +139,24 @@ const ExtractRuleManager: React.FC<ExtractRuleManagerProps> = ({ prefillDomain, 
 
   return (
     <div className="space-y-6">
+      <ExtractRuleMarketplace prefillDomain={prefillDomain} onInstalled={loadRules} />
+
+      <PublishRuleModal
+        open={publishTarget != null}
+        onClose={() => setPublishTarget(null)}
+        ruleId={publishTarget?.id}
+        initial={
+          publishTarget
+            ? {
+                domain: publishTarget.domain,
+                regex: publishTarget.regex,
+                priority: publishTarget.priority,
+                remark: publishTarget.remark,
+              }
+            : undefined
+        }
+      />
+
       <div className="border rounded-lg p-4 bg-card">
         <h2 className="font-semibold mb-1">{t('extractRules.builtinTitle')}</h2>
         <p className="text-sm text-muted-foreground mb-4">{t('extractRules.builtinDesc')}</p>
@@ -342,6 +362,13 @@ const ExtractRuleManager: React.FC<ExtractRuleManagerProps> = ({ prefillDomain, 
                           className="text-xs text-primary hover:underline min-h-8 px-1"
                         >
                           {t('extractRules.edit')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPublishTarget(rule)}
+                          className="text-xs text-muted-foreground hover:underline min-h-8 px-1"
+                        >
+                          {t('ruleMarket.publish')}
                         </button>
                         <button
                           type="button"

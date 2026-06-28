@@ -13,6 +13,9 @@ import {
   ExtractRule,
   UserExtractRule,
   SaveExtractRuleParams,
+  ExtractRuleTemplate,
+  ExtractRuleTemplateStatus,
+  PublishExtractRuleTemplateParams,
   SentEmail,
   SendAttachment,
   AdminStats,
@@ -38,6 +41,8 @@ import {
   TurnstileSettingsAdminView,
   RegistrationVerificationRow,
   DEFAULT_LEGACY_SEND_DAILY_QUOTA,
+  DEFAULT_DAILY_LEASE_QUOTA,
+  DEFAULT_MAX_USER_TOKENS,
   RateLimitStats,
   ApiRequestStats,
   LocalEmailStats,
@@ -123,6 +128,32 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     await db.exec(`CREATE TABLE IF NOT EXISTS mail_domains (id INTEGER PRIMARY KEY AUTOINCREMENT, domain TEXT UNIQUE NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, is_default INTEGER NOT NULL DEFAULT 0, cloudflare_ready INTEGER NOT NULL DEFAULT 0, brevo_verified INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);`);
     await db.exec(`CREATE TABLE IF NOT EXISTS registration_verifications (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, password_hash TEXT NOT NULL, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, ip TEXT, attempts INTEGER NOT NULL DEFAULT 0);`);
     await db.exec(`CREATE TABLE IF NOT EXISTS password_reset_verifications (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, password_hash TEXT NOT NULL, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, ip TEXT, attempts INTEGER NOT NULL DEFAULT 0);`);
+    await db.exec(`CREATE TABLE IF NOT EXISTS extract_rule_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      domain TEXT NOT NULL,
+      regex TEXT NOT NULL,
+      priority INTEGER NOT NULL DEFAULT 0,
+      title TEXT NOT NULL,
+      remark TEXT,
+      author_user_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reject_reason TEXT,
+      reviewed_at INTEGER,
+      install_count INTEGER NOT NULL DEFAULT 0,
+      source_rule_id INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (author_user_id) REFERENCES users(id) ON DELETE CASCADE
+    );`);
+    await db.exec(`CREATE TABLE IF NOT EXISTS extract_rule_template_installs (
+      user_id INTEGER NOT NULL,
+      template_id INTEGER NOT NULL,
+      user_rule_id INTEGER NOT NULL,
+      installed_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, template_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (template_id) REFERENCES extract_rule_templates(id) ON DELETE CASCADE
+    );`);
 
     // Phase 2: add columns to existing tables (must run before indexes on those columns)
     await migrateAddColumn(db, 'emails', 'extracted_code', 'TEXT');
@@ -144,6 +175,14 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     await migrateAddColumn(db, 'extract_rules', 'remark', 'TEXT');
     await migrateAddColumn(db, 'users', 'rate_limit_per_min', 'INTEGER DEFAULT 60');
     await migrateAddColumn(db, 'users', 'rate_limit_burst', 'INTEGER');
+    await migrateAddColumn(db, 'users', 'daily_lease_quota', `INTEGER NOT NULL DEFAULT ${DEFAULT_DAILY_LEASE_QUOTA}`);
+    await db.prepare(
+      `UPDATE users SET daily_lease_quota = -1 WHERE role = 'admin' OR daily_send_quota < 0`
+    ).run();
+    await migrateAddColumn(db, 'users', 'session_version', 'INTEGER NOT NULL DEFAULT 0');
+    await migrateAddColumn(db, 'mailboxes', 'legacy_token_id', 'INTEGER');
+    await migrateAddColumn(db, 'mailboxes', 'lease_counted_date', 'TEXT');
+    await migratePlaintextApiTokens(db);
     await migrateAddColumn(db, 'attachments', 'r2_key', 'TEXT');
 
     // Phase 3: create indexes (after all columns exist)
@@ -175,6 +214,9 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_registration_verifications_expires ON registration_verifications(expires_at);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_password_reset_verifications_email ON password_reset_verifications(email);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_password_reset_verifications_expires ON password_reset_verifications(expires_at);`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_extract_rule_templates_domain ON extract_rule_templates(domain);`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_extract_rule_templates_status ON extract_rule_templates(status);`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_extract_rule_templates_author ON extract_rule_templates(author_user_id);`);
 
     await seedAdminUser(db, adminPassword);
     await seedGuestUser(db);
@@ -185,6 +227,20 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     console.error('数据库初始化失败:', error);
     // 抛出错误，让上层处理
     throw new Error(`数据库初始化失败: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * One-time: hash legacy api_tokens rows still stored as plaintext (64-char hex = already hashed).
+ */
+async function migratePlaintextApiTokens(db: D1Database): Promise<void> {
+  const rows = await db.prepare(`SELECT id, token FROM api_tokens`).all();
+  if (!rows.results) return;
+  for (const row of rows.results) {
+    const stored = row.token as string;
+    if (/^[a-f0-9]{64}$/i.test(stored)) continue;
+    const tokenHash = await hashToken(stored);
+    await db.prepare(`UPDATE api_tokens SET token = ? WHERE id = ?`).bind(tokenHash, row.id).run();
   }
 }
 
@@ -205,7 +261,7 @@ async function seedAdminUser(db: D1Database, adminPassword?: string): Promise<vo
   if ((count?.c ?? 0) > 0) return;
   const passwordHash = await hashPassword(adminPassword);
   await db.prepare(
-    `INSERT INTO users (username, password_hash, role, daily_send_quota, enabled) VALUES (?, ?, 'admin', -1, 1)`
+    `INSERT INTO users (username, password_hash, role, daily_send_quota, daily_lease_quota, enabled) VALUES (?, ?, 'admin', -1, -1, 1)`
   ).bind('admin', passwordHash).run();
   console.log('已创建初始 admin 用户');
 }
@@ -216,9 +272,9 @@ async function seedGuestUser(db: D1Database): Promise<void> {
   if (existing) return;
   const passwordHash = await hashPassword('guest');
   await db.prepare(
-    `INSERT INTO users (username, password_hash, role, daily_send_quota, rate_limit_per_min, enabled)
-     VALUES (?, ?, 'user', 50, 60, 1)`
-  ).bind('guest', passwordHash).run();
+    `INSERT INTO users (username, password_hash, role, daily_send_quota, daily_lease_quota, rate_limit_per_min, enabled)
+     VALUES (?, ?, 'user', 50, ?, 60, 1)`
+  ).bind('guest', passwordHash, DEFAULT_DAILY_LEASE_QUOTA).run();
   console.log('已创建演示 guest 用户 (guest/guest)');
 }
 
@@ -246,11 +302,14 @@ export function getTodayUsageDate(): string {
 
 function mapUser(row: Record<string, unknown>): User {
   const burstRaw = row.rate_limit_burst as number | null | undefined;
+  const leaseRaw = row.daily_lease_quota as number | null | undefined;
   return {
     id: row.id as number,
     username: row.username as string,
     role: row.role as User['role'],
     dailySendQuota: row.daily_send_quota as number,
+    dailyLeaseQuota: leaseRaw ?? DEFAULT_DAILY_LEASE_QUOTA,
+    sessionVersion: (row.session_version as number | null | undefined) ?? 0,
     rateLimitPerMin: (row.rate_limit_per_min as number | null | undefined) ?? null,
     rateLimitBurst: burstRaw != null && burstRaw > 0 ? burstRaw : null,
     enabled: !!row.enabled,
@@ -269,7 +328,7 @@ function parseScopes(raw: string): TokenScope[] {
 }
 
 const MAILBOX_COLUMNS =
-  'id, address, created_at, expires_at, ip_address, last_accessed, user_id, mail_domain';
+  'id, address, created_at, expires_at, ip_address, last_accessed, user_id, mail_domain, legacy_token_id, lease_counted_date';
 
 /**
  * 创建邮箱
@@ -287,9 +346,23 @@ export async function createMailbox(db: D1Database, params: CreateMailboxParams)
     ipAddress: params.ipAddress,
     lastAccessed: now,
     mailDomain: params.mailDomain ?? null,
+    legacyTokenId: params.legacyTokenId ?? null,
   };
   
-  await db.prepare(`INSERT INTO mailboxes (id, address, created_at, expires_at, ip_address, last_accessed, user_id, mail_domain) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(mailbox.id, mailbox.address, mailbox.createdAt, mailbox.expiresAt, mailbox.ipAddress, mailbox.lastAccessed, params.userId ?? null, mailbox.mailDomain ?? null).run();
+  await db.prepare(
+    `INSERT INTO mailboxes (id, address, created_at, expires_at, ip_address, last_accessed, user_id, mail_domain, legacy_token_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    mailbox.id,
+    mailbox.address,
+    mailbox.createdAt,
+    mailbox.expiresAt,
+    mailbox.ipAddress,
+    mailbox.lastAccessed,
+    params.userId ?? null,
+    mailbox.mailDomain ?? null,
+    params.legacyTokenId ?? null
+  ).run();
   
   return mailbox;
 }
@@ -310,6 +383,7 @@ function rowToMailbox(result: Record<string, unknown>, lastAccessed?: number): M
     lastAccessed: lastAccessed ?? (result.last_accessed as number),
     userId: (result.user_id as number | null) ?? null,
     mailDomain: (result.mail_domain as string | null) ?? null,
+    legacyTokenId: (result.legacy_token_id as number | null) ?? null,
   };
 }
 
@@ -336,21 +410,21 @@ export async function getMailboxRaw(db: D1Database, address: string): Promise<Ma
   return rowToMailbox(result as Record<string, unknown>);
 }
 
-/** 最近租用的未过期邮箱（用户按 created_at，Legacy 按同 IP + 无 user_id） */
+/** 最近租用的未过期邮箱（用户按 user_id，Legacy 按 legacy_token_id） */
 export async function getLatestLeasedMailbox(
   db: D1Database,
-  opts: { userId?: number | null; ipAddress?: string | null; legacyOnly?: boolean }
+  opts: { userId?: number | null; legacyTokenId?: number | null; legacyOnly?: boolean }
 ): Promise<Mailbox | null> {
   const now = getCurrentTimestamp();
   if (opts.legacyOnly) {
-    if (!opts.ipAddress?.trim()) return null;
+    if (opts.legacyTokenId == null) return null;
     const row = await db
       .prepare(
         `SELECT ${MAILBOX_COLUMNS} FROM mailboxes
-         WHERE user_id IS NULL AND ip_address = ? AND expires_at > ?
+         WHERE user_id IS NULL AND legacy_token_id = ? AND expires_at > ?
          ORDER BY created_at DESC LIMIT 1`
       )
-      .bind(opts.ipAddress.trim(), now)
+      .bind(opts.legacyTokenId, now)
       .first();
     return row ? rowToMailbox(row as Record<string, unknown>) : null;
   }
@@ -1227,25 +1301,14 @@ function maskStoredApiToken(stored: string): string {
   return `••••${stored.slice(-4)}`;
 }
 
-export async function verifyApiToken(db: D1Database, token: string): Promise<boolean> {
+export async function verifyApiToken(db: D1Database, token: string): Promise<{ id: number } | null> {
   const nowMs = Date.now();
   const tokenHash = await hashToken(token);
-
-  const hashed = await db
+  const row = await db
     .prepare(`SELECT id FROM api_tokens WHERE token = ? AND expires_at > ?`)
     .bind(tokenHash, nowMs)
     .first<{ id: number }>();
-  if (hashed) return true;
-
-  // Upgrade legacy plaintext tokens on successful verification
-  const plaintext = await db
-    .prepare(`SELECT id FROM api_tokens WHERE token = ? AND expires_at > ?`)
-    .bind(token, nowMs)
-    .first<{ id: number }>();
-  if (!plaintext) return false;
-
-  await db.prepare(`UPDATE api_tokens SET token = ? WHERE id = ?`).bind(tokenHash, plaintext.id).run();
-  return true;
+  return row ?? null;
 }
 
 export async function listApiTokens(db: D1Database): Promise<ApiToken[]> {
@@ -1463,6 +1526,301 @@ export async function deleteAnyUserExtractRule(db: D1Database, id: number): Prom
   if (!existing || existing.userId == null) return false;
   await deleteExtractRule(db, id);
   return true;
+}
+
+const EXTRACT_RULE_TEMPLATE_COLUMNS = `t.id, t.domain, t.regex, t.priority, t.title, t.remark,
+  t.author_user_id, t.status, t.reject_reason, t.reviewed_at, t.install_count, t.source_rule_id,
+  t.created_at, t.updated_at`;
+
+function mapExtractRuleTemplateRow(row: Record<string, unknown>): ExtractRuleTemplate {
+  return {
+    id: row.id as number,
+    domain: row.domain as string,
+    regex: row.regex as string,
+    priority: row.priority as number,
+    title: row.title as string,
+    remark: (row.remark as string | null) ?? null,
+    authorUserId: row.author_user_id as number,
+    authorUsername: row.author_username as string | undefined,
+    status: row.status as ExtractRuleTemplateStatus,
+    rejectReason: (row.reject_reason as string | null) ?? null,
+    reviewedAt: (row.reviewed_at as number | null) ?? null,
+    installCount: row.install_count as number,
+    sourceRuleId: (row.source_rule_id as number | null) ?? null,
+    createdAt: row.created_at as number,
+    updatedAt: row.updated_at as number,
+  };
+}
+
+export async function countPendingExtractRuleTemplatesByUser(db: D1Database, userId: number): Promise<number> {
+  const row = await db
+    .prepare(`SELECT COUNT(*) AS count FROM extract_rule_templates WHERE author_user_id = ? AND status = 'pending'`)
+    .bind(userId)
+    .first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+export async function listApprovedExtractRuleTemplates(
+  db: D1Database,
+  opts: { domain?: string; q?: string; limit?: number; offset?: number }
+): Promise<{ templates: ExtractRuleTemplate[]; total: number }> {
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+  const offset = Math.max(opts.offset ?? 0, 0);
+  const conditions = [`t.status = 'approved'`];
+  const binds: (string | number)[] = [];
+
+  if (opts.domain?.trim()) {
+    conditions.push(`t.domain = ?`);
+    binds.push(opts.domain.trim().toLowerCase());
+  }
+  if (opts.q?.trim()) {
+    const like = `%${opts.q.trim().toLowerCase()}%`;
+    conditions.push(`(LOWER(t.domain) LIKE ? OR LOWER(t.title) LIKE ? OR LOWER(COALESCE(t.remark, '')) LIKE ?)`);
+    binds.push(like, like, like);
+  }
+
+  const where = conditions.join(' AND ');
+  const countRow = await db
+    .prepare(`SELECT COUNT(*) AS count FROM extract_rule_templates t WHERE ${where}`)
+    .bind(...binds)
+    .first<{ count: number }>();
+
+  const results = await db
+    .prepare(
+      `SELECT ${EXTRACT_RULE_TEMPLATE_COLUMNS}, u.username AS author_username
+       FROM extract_rule_templates t
+       JOIN users u ON t.author_user_id = u.id
+       WHERE ${where}
+       ORDER BY t.install_count DESC, t.updated_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .bind(...binds, limit, offset)
+    .all();
+
+  const templates = (results.results ?? []).map((row) =>
+    mapExtractRuleTemplateRow(row as Record<string, unknown>)
+  );
+
+  return { templates, total: countRow?.count ?? 0 };
+}
+
+export async function listUserExtractRuleTemplateSubmissions(
+  db: D1Database,
+  userId: number
+): Promise<ExtractRuleTemplate[]> {
+  const results = await db
+    .prepare(
+      `SELECT ${EXTRACT_RULE_TEMPLATE_COLUMNS}, u.username AS author_username
+       FROM extract_rule_templates t
+       JOIN users u ON t.author_user_id = u.id
+       WHERE t.author_user_id = ?
+       ORDER BY t.created_at DESC`
+    )
+    .bind(userId)
+    .all();
+  return (results.results ?? []).map((row) => mapExtractRuleTemplateRow(row as Record<string, unknown>));
+}
+
+export async function listAdminExtractRuleTemplates(
+  db: D1Database,
+  status?: ExtractRuleTemplateStatus | 'all'
+): Promise<ExtractRuleTemplate[]> {
+  let query = `SELECT ${EXTRACT_RULE_TEMPLATE_COLUMNS}, u.username AS author_username
+     FROM extract_rule_templates t
+     JOIN users u ON t.author_user_id = u.id`;
+  const binds: string[] = [];
+  if (status && status !== 'all') {
+    query += ` WHERE t.status = ?`;
+    binds.push(status);
+  }
+  query += ` ORDER BY CASE t.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, t.created_at DESC`;
+  const results = await db.prepare(query).bind(...binds).all();
+  return (results.results ?? []).map((row) => mapExtractRuleTemplateRow(row as Record<string, unknown>));
+}
+
+export async function getExtractRuleTemplateById(
+  db: D1Database,
+  id: number
+): Promise<ExtractRuleTemplate | null> {
+  const row = await db
+    .prepare(
+      `SELECT ${EXTRACT_RULE_TEMPLATE_COLUMNS}, u.username AS author_username
+       FROM extract_rule_templates t
+       JOIN users u ON t.author_user_id = u.id
+       WHERE t.id = ?`
+    )
+    .bind(id)
+    .first();
+  return row ? mapExtractRuleTemplateRow(row as Record<string, unknown>) : null;
+}
+
+export async function createExtractRuleTemplateSubmission(
+  db: D1Database,
+  authorUserId: number,
+  params: PublishExtractRuleTemplateParams
+): Promise<ExtractRuleTemplate> {
+  const now = getCurrentTimestamp();
+  const result = await db
+    .prepare(
+      `INSERT INTO extract_rule_templates
+       (domain, regex, priority, title, remark, author_user_id, status, source_rule_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
+    )
+    .bind(
+      params.domain,
+      params.regex,
+      params.priority ?? 0,
+      params.title.trim(),
+      params.remark ?? null,
+      authorUserId,
+      params.sourceRuleId ?? null,
+      now,
+      now
+    )
+    .run();
+  const id = result.meta.last_row_id as number;
+  const withUser = await getExtractRuleTemplateById(db, id);
+  if (!withUser) throw new Error('Failed to create extract rule template');
+  return withUser;
+}
+
+export async function approveExtractRuleTemplate(db: D1Database, id: number): Promise<ExtractRuleTemplate | null> {
+  const existing = await getExtractRuleTemplateById(db, id);
+  if (!existing) return null;
+  const now = getCurrentTimestamp();
+  await db
+    .prepare(
+      `UPDATE extract_rule_templates
+       SET status = 'approved', reject_reason = NULL, reviewed_at = ?, updated_at = ?
+       WHERE id = ?`
+    )
+    .bind(now, now, id)
+    .run();
+  return getExtractRuleTemplateById(db, id);
+}
+
+export async function rejectExtractRuleTemplate(
+  db: D1Database,
+  id: number,
+  reason: string
+): Promise<ExtractRuleTemplate | null> {
+  const existing = await getExtractRuleTemplateById(db, id);
+  if (!existing) return null;
+  const now = getCurrentTimestamp();
+  await db
+    .prepare(
+      `UPDATE extract_rule_templates
+       SET status = 'rejected', reject_reason = ?, reviewed_at = ?, updated_at = ?
+       WHERE id = ?`
+    )
+    .bind(reason.trim() || null, now, now, id)
+    .run();
+  return getExtractRuleTemplateById(db, id);
+}
+
+export async function deleteExtractRuleTemplate(db: D1Database, id: number): Promise<boolean> {
+  const existing = await getExtractRuleTemplateById(db, id);
+  if (!existing) return false;
+  await db.prepare(`DELETE FROM extract_rule_template_installs WHERE template_id = ?`).bind(id).run();
+  await db.prepare(`DELETE FROM extract_rule_templates WHERE id = ?`).bind(id).run();
+  return true;
+}
+
+export async function listInstalledTemplateIdsForUser(db: D1Database, userId: number): Promise<number[]> {
+  const results = await db
+    .prepare(
+      `SELECT ti.template_id
+       FROM extract_rule_template_installs ti
+       JOIN extract_rules er ON er.id = ti.user_rule_id
+       WHERE ti.user_id = ?`
+    )
+    .bind(userId)
+    .all();
+  return (results.results ?? []).map((row) => row.template_id as number);
+}
+
+export async function getTemplateInstallRuleId(
+  db: D1Database,
+  userId: number,
+  templateId: number
+): Promise<number | null> {
+  const row = await db
+    .prepare(`SELECT user_rule_id FROM extract_rule_template_installs WHERE user_id = ? AND template_id = ?`)
+    .bind(userId, templateId)
+    .first<{ user_rule_id: number }>();
+  if (!row) return null;
+  const rule = await getExtractRuleById(db, row.user_rule_id);
+  return rule ? row.user_rule_id : null;
+}
+
+export async function installExtractRuleTemplate(
+  db: D1Database,
+  userId: number,
+  templateId: number
+): Promise<{ rule: ExtractRule; alreadyInstalled: boolean } | null> {
+  const template = await getExtractRuleTemplateById(db, templateId);
+  if (!template || template.status !== 'approved') return null;
+
+  const existingRuleId = await getTemplateInstallRuleId(db, userId, templateId);
+  if (existingRuleId != null) {
+    const rule = await getExtractRuleById(db, existingRuleId);
+    if (rule) return { rule, alreadyInstalled: true };
+    await db
+      .prepare(`DELETE FROM extract_rule_template_installs WHERE user_id = ? AND template_id = ?`)
+      .bind(userId, templateId)
+      .run();
+  }
+
+  const remark = template.remark
+    ? `[marketplace:#${template.id}] ${template.remark}`
+    : `[marketplace:#${template.id}] ${template.title}`;
+
+  const rule = await createExtractRule(db, {
+    domain: template.domain,
+    regex: template.regex,
+    priority: template.priority,
+    enabled: true,
+    remark,
+    userId,
+  });
+
+  const now = getCurrentTimestamp();
+  await db
+    .prepare(
+      `INSERT INTO extract_rule_template_installs (user_id, template_id, user_rule_id, installed_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, template_id) DO UPDATE SET user_rule_id = excluded.user_rule_id, installed_at = excluded.installed_at`
+    )
+    .bind(userId, templateId, rule.id, now)
+    .run();
+
+  await db
+    .prepare(`UPDATE extract_rule_templates SET install_count = install_count + 1, updated_at = ? WHERE id = ?`)
+    .bind(now, templateId)
+    .run();
+
+  return { rule, alreadyInstalled: false };
+}
+
+export async function listPopularExtractRuleTemplateDomains(
+  db: D1Database,
+  limit = 20
+): Promise<{ domain: string; count: number }[]> {
+  const results = await db
+    .prepare(
+      `SELECT domain, COUNT(*) AS count
+       FROM extract_rule_templates
+       WHERE status = 'approved'
+       GROUP BY domain
+       ORDER BY count DESC, domain ASC
+       LIMIT ?`
+    )
+    .bind(limit)
+    .all();
+  return (results.results ?? []).map((row) => ({
+    domain: row.domain as string,
+    count: row.count as number,
+  }));
 }
 
 // ─── Sent Emails ─────────────────────────────────────────────
@@ -1817,42 +2175,53 @@ export async function findInstantLatestEmail(
 
 // ─── Users & Auth ────────────────────────────────────────────
 
+const USER_COLUMNS =
+  'id, username, role, daily_send_quota, daily_lease_quota, rate_limit_per_min, rate_limit_burst, enabled, created_at, last_login_at, session_version';
+
 export async function getUserById(db: D1Database, id: number): Promise<User | null> {
   const result = await db.prepare(
-    `SELECT id, username, role, daily_send_quota, rate_limit_per_min, rate_limit_burst, enabled, created_at, last_login_at FROM users WHERE id = ?`
+    `SELECT ${USER_COLUMNS} FROM users WHERE id = ?`
   ).bind(id).first();
   return result ? mapUser(result as Record<string, unknown>) : null;
 }
 
 export async function getUserByUsername(db: D1Database, username: string): Promise<User | null> {
   const result = await db.prepare(
-    `SELECT id, username, role, daily_send_quota, rate_limit_per_min, rate_limit_burst, enabled, created_at, last_login_at FROM users WHERE username = ?`
+    `SELECT ${USER_COLUMNS} FROM users WHERE username = ?`
   ).bind(username).first();
   return result ? mapUser(result as Record<string, unknown>) : null;
 }
 
 export async function listUsers(db: D1Database): Promise<User[]> {
   const results = await db.prepare(
-    `SELECT id, username, role, daily_send_quota, rate_limit_per_min, rate_limit_burst, enabled, created_at, last_login_at FROM users ORDER BY created_at ASC`
+    `SELECT ${USER_COLUMNS} FROM users ORDER BY created_at ASC`
   ).all();
   if (!results.results) return [];
   return results.results.map((row) => mapUser(row as Record<string, unknown>));
 }
 
 export async function createUser(db: D1Database, params: CreateUserParams): Promise<User> {
-  const passwordHash = await hashPassword(params.password);
+  let passwordHash: string;
+  if (params.passwordHash) {
+    passwordHash = params.passwordHash;
+  } else if (params.password) {
+    passwordHash = await hashPassword(params.password);
+  } else {
+    throw new Error('createUser requires password or passwordHash');
+  }
   const rateLimitPerMin = params.rateLimitPerMin ?? 60;
   const rateLimitBurst =
     params.rateLimitBurst != null && params.rateLimitBurst > 0 ? params.rateLimitBurst : null;
   const result = await db.prepare(
-    `INSERT INTO users (username, password_hash, role, daily_send_quota, rate_limit_per_min, rate_limit_burst, enabled)
-     VALUES (?, ?, ?, ?, ?, ?, 1)
-     RETURNING id, username, role, daily_send_quota, rate_limit_per_min, rate_limit_burst, enabled, created_at, last_login_at`
+    `INSERT INTO users (username, password_hash, role, daily_send_quota, daily_lease_quota, rate_limit_per_min, rate_limit_burst, enabled)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+     RETURNING ${USER_COLUMNS}`
   ).bind(
     params.username,
     passwordHash,
     params.role ?? 'user',
     params.dailySendQuota ?? 50,
+    params.dailyLeaseQuota ?? DEFAULT_DAILY_LEASE_QUOTA,
     rateLimitPerMin,
     rateLimitBurst
   ).first();
@@ -1865,14 +2234,17 @@ export async function updateUser(db: D1Database, id: number, params: UpdateUserP
 
   if (params.password) {
     const passwordHash = await hashPassword(params.password);
-    await db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).bind(passwordHash, id).run();
+    await db.prepare(
+      `UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?`
+    ).bind(passwordHash, id).run();
   }
 
   await db.prepare(
-    `UPDATE users SET role = COALESCE(?, role), daily_send_quota = COALESCE(?, daily_send_quota), enabled = COALESCE(?, enabled) WHERE id = ?`
+    `UPDATE users SET role = COALESCE(?, role), daily_send_quota = COALESCE(?, daily_send_quota), daily_lease_quota = COALESCE(?, daily_lease_quota), enabled = COALESCE(?, enabled) WHERE id = ?`
   ).bind(
     params.role ?? null,
     params.dailySendQuota ?? null,
+    params.dailyLeaseQuota ?? null,
     params.enabled === undefined ? null : (params.enabled ? 1 : 0),
     id
   ).run();
@@ -2048,6 +2420,19 @@ export async function checkSendQuota(db: D1Database, userId: number, quota: numb
   return { ok: true };
 }
 
+export async function checkLeaseQuota(
+  db: D1Database,
+  userId: number,
+  quota: number
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (quota < 0) return { ok: true };
+  const usage = await getDailyUsage(db, userId);
+  if (usage.leaseCount >= quota) {
+    return { ok: false, error: `已达到每日随机邮箱配额 (${quota})` };
+  }
+  return { ok: true };
+}
+
 export async function incrementSendUsage(db: D1Database, userId: number): Promise<void> {
   const date = getTodayUsageDate();
   await db.prepare(
@@ -2062,6 +2447,37 @@ export async function incrementLeaseUsage(db: D1Database, userId: number): Promi
     `INSERT INTO daily_usage (user_id, usage_date, send_count, lease_count) VALUES (?, ?, 0, 1)
      ON CONFLICT(user_id, usage_date) DO UPDATE SET lease_count = lease_count + 1`
   ).bind(userId, date).run();
+}
+
+/** Increment daily lease quota when a user mailbox receives its first email of the day. */
+export async function recordMailboxLeaseUsageOnReceive(
+  db: D1Database,
+  mailboxId: string
+): Promise<void> {
+  const today = getTodayUsageDate();
+  const row = await db
+    .prepare(`SELECT user_id, lease_counted_date FROM mailboxes WHERE id = ?`)
+    .bind(mailboxId)
+    .first<{ user_id: number | null; lease_counted_date: string | null }>();
+  if (!row?.user_id || row.lease_counted_date === today) return;
+
+  const updated = await db
+    .prepare(
+      `UPDATE mailboxes SET lease_counted_date = ? WHERE id = ? AND (lease_counted_date IS NULL OR lease_counted_date != ?)`
+    )
+    .bind(today, mailboxId, today)
+    .run();
+  if ((updated.meta?.changes ?? 0) === 0) return;
+
+  const user = await getUserById(db, row.user_id);
+  if (!user || user.dailyLeaseQuota < 0) {
+    await incrementLeaseUsage(db, row.user_id);
+    return;
+  }
+  const quotaCheck = await checkLeaseQuota(db, row.user_id, user.dailyLeaseQuota);
+  if (quotaCheck.ok) {
+    await incrementLeaseUsage(db, row.user_id);
+  }
 }
 
 export async function isMailboxOwnedByUser(
@@ -2360,6 +2776,24 @@ export async function getApiRequestStats(db: D1Database): Promise<ApiRequestStat
 
 const MAINTENANCE_MODE_KEY = 'maintenance_mode';
 const LEGACY_SEND_DAILY_QUOTA_KEY = 'legacy_send_daily_quota';
+const MAX_USER_TOKENS_KEY = 'max_user_tokens';
+
+export function normalizeMaxUserTokens(limit: number): number {
+  if (!Number.isFinite(limit)) return DEFAULT_MAX_USER_TOKENS;
+  return Math.min(Math.max(Math.floor(limit), 1), 100);
+}
+
+export async function getMaxUserTokens(db: D1Database): Promise<number> {
+  const raw = await getSystemSetting(db, MAX_USER_TOKENS_KEY);
+  if (raw == null) return DEFAULT_MAX_USER_TOKENS;
+  return normalizeMaxUserTokens(parseInt(raw, 10));
+}
+
+export async function setMaxUserTokens(db: D1Database, limit: number): Promise<number> {
+  const normalized = normalizeMaxUserTokens(limit);
+  await setSystemSetting(db, MAX_USER_TOKENS_KEY, String(normalized));
+  return normalized;
+}
 
 export async function getLegacySendDailyQuota(db: D1Database): Promise<number> {
   const raw = await getSystemSetting(db, LEGACY_SEND_DAILY_QUOTA_KEY);

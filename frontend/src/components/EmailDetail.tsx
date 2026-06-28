@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { API_BASE_URL } from '../config';
 import { MailboxContext } from '../contexts/MailboxContext';
 import { stripHtmlToText } from '../utils/htmlBody';
+import { sanitizeEmailHtml } from '../utils/sanitizeHtml';
 import NoOtpHint from './NoOtpHint';
 interface EmailDetailProps {
   emailId: string;
@@ -412,7 +413,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ emailId, onClose }) => {
             {email.htmlContent ? (
               <div
                 className="prose prose-sm max-w-none dark:prose-invert border rounded-md p-4 bg-background"
-                dangerouslySetInnerHTML={{ __html: email.htmlContent }}
+                dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(email.htmlContent) }}
               />
             ) : email.textContent ? (
               <pre className="whitespace-pre-wrap border rounded-md p-4 bg-background font-sans text-sm">

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getUserSentEmailDetail, resendUserSentEmail, SentEmailDetail } from '../utils/api';
+import { sanitizeEmailHtml } from '../utils/sanitizeHtml';
 
 interface SentEmailDetailModalProps {
   emailId: number;
@@ -132,7 +133,7 @@ const SentEmailDetailModal: React.FC<SentEmailDetailModalProps> = ({ emailId, on
                   {bodyMode === 'html' && email.bodyHtml ? (
                     <div
                       className="border rounded-md p-3 prose prose-sm dark:prose-invert max-w-none bg-muted/20"
-                      dangerouslySetInnerHTML={{ __html: email.bodyHtml }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(email.bodyHtml) }}
                     />
                   ) : (
                     <pre className="border rounded-md p-3 whitespace-pre-wrap bg-muted/20 text-xs">{email.bodyText || email.bodyHtml}</pre>

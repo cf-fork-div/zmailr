@@ -45,12 +45,13 @@ export async function authenticateApiToken(
       tokenId: userAuth.tokenId,
       scopes: userAuth.scopes,
       dailySendQuota: user.dailySendQuota,
+      dailyLeaseQuota: user.dailyLeaseQuota,
     };
   }
 
-  const legacyOk = await verifyApiToken(db, token);
-  if (legacyOk) {
-    return { type: 'legacy', scopes: ALL_SCOPES };
+  const legacyAuth = await verifyApiToken(db, token);
+  if (legacyAuth) {
+    return { type: 'legacy', tokenId: legacyAuth.id, scopes: ALL_SCOPES };
   }
 
   return null;
@@ -72,9 +73,9 @@ export function assertMailboxAccess(mailbox: Mailbox, ctx: AccessContext): boole
     if (ctx.auth?.type === 'user' && ctx.auth.userId === mailbox.userId) return true;
     return false;
   }
-  // Legacy mailboxes without user_id: legacy Bearer token or admin session only
-  if (ctx.auth?.type === 'legacy') return true;
-  if (ctx.user?.role === 'admin') return true;
+  if (mailbox.legacyTokenId != null) {
+    return ctx.auth?.type === 'legacy' && ctx.auth.tokenId === mailbox.legacyTokenId;
+  }
   return false;
 }
 
@@ -83,8 +84,24 @@ export function verifyAdminPassword(env: Env, password: string): boolean {
   return password === env.ADMIN_PASSWORD;
 }
 
-function getSessionSecret(env: Env): string {
-  return env.ADMIN_PASSWORD || 'zmail-dev-secret';
+/** Session HMAC secret. Must be set via SESSION_SECRET (independent of ADMIN_PASSWORD). */
+export function resolveSessionSecret(env: Env): string | null {
+  const secret = env.SESSION_SECRET?.trim();
+  return secret || null;
+}
+
+function isSecureRequest(request?: Request): boolean {
+  if (!request) return false;
+  try {
+    return new URL(request.url).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function sessionCookieAttrs(path: string, maxAge: number, request?: Request): string {
+  const secure = isSecureRequest(request) ? '; Secure' : '';
+  return `Path=${path}; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`;
 }
 
 async function signSession(secret: string, payload: string): Promise<string> {
@@ -100,7 +117,12 @@ async function signSession(secret: string, payload: string): Promise<string> {
   return `${payload}.${sigHex}`;
 }
 
-async function verifySessionToken(secret: string, session: string): Promise<string | null> {
+interface VerifiedUserSession {
+  userId: number;
+  sessionVersion: number;
+}
+
+async function verifyUserSessionToken(secret: string, session: string): Promise<VerifiedUserSession | null> {
   const lastDot = session.lastIndexOf('.');
   if (lastDot <= 0) return null;
   const payload = session.slice(0, lastDot);
@@ -118,17 +140,43 @@ async function verifySessionToken(secret: string, session: string): Promise<stri
   if (sigHex !== expectedHex) return null;
 
   const parts = payload.split('.');
-  const exp = parseInt(parts[parts.length - 1], 10);
-  if (!exp || Date.now() > exp) return null;
+  if (parts.length !== 3) return null;
+  const userId = parseInt(parts[0], 10);
+  const sessionVersion = parseInt(parts[1], 10);
+  const exp = parseInt(parts[2], 10);
+  if (!userId || Number.isNaN(sessionVersion) || !exp || Date.now() > exp) return null;
 
-  return payload;
+  return { userId, sessionVersion };
 }
 
-export async function createAdminSessionCookie(env: Env): Promise<string> {
+async function verifyAdminSessionToken(secret: string, session: string): Promise<boolean> {
+  const lastDot = session.lastIndexOf('.');
+  if (lastDot <= 0) return false;
+  const payload = session.slice(0, lastDot);
+  const sigHex = session.slice(lastDot + 1);
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const expected = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  const expectedHex = Array.from(new Uint8Array(expected), (b) => b.toString(16).padStart(2, '0')).join('');
+  if (sigHex !== expectedHex) return false;
+
+  const exp = parseInt(payload, 10);
+  return !!exp && Date.now() <= exp;
+}
+
+export async function createAdminSessionCookie(env: Env, request?: Request): Promise<string | null> {
+  const secret = resolveSessionSecret(env);
+  if (!secret) return null;
   const exp = Date.now() + SESSION_MAX_AGE * 1000;
-  const token = await signSession(getSessionSecret(env), String(exp));
+  const token = await signSession(secret, String(exp));
   const path = adminPathPrefix(env);
-  return `${ADMIN_SESSION_COOKIE}=${token}; Path=${path}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_MAX_AGE}`;
+  return `${ADMIN_SESSION_COOKIE}=${token}; ${sessionCookieAttrs(path, SESSION_MAX_AGE, request)}`;
 }
 
 function getCookieValue(request: Request, name: string): string | null {
@@ -139,26 +187,34 @@ function getCookieValue(request: Request, name: string): string | null {
 
 export async function isAdminAuthenticated(request: Request, env: Env): Promise<boolean> {
   if (!env.ADMIN_PASSWORD) return false;
+  const secret = resolveSessionSecret(env);
+  if (!secret) return false;
   const session = getCookieValue(request, ADMIN_SESSION_COOKIE);
   if (!session) return false;
-  const payload = await verifySessionToken(getSessionSecret(env), session);
-  return payload !== null;
+  return verifyAdminSessionToken(secret, session);
 }
 
-export function clearAdminSessionCookie(env: Env): string {
+export function clearAdminSessionCookie(env: Env, request?: Request): string {
   const path = adminPathPrefix(env);
-  return `${ADMIN_SESSION_COOKIE}=; Path=${path}; HttpOnly; SameSite=Strict; Max-Age=0`;
+  return `${ADMIN_SESSION_COOKIE}=; ${sessionCookieAttrs(path, 0, request)}`;
 }
 
-export async function createUserSessionCookie(env: Env, userId: number): Promise<string> {
+export async function createUserSessionCookie(
+  env: Env,
+  userId: number,
+  sessionVersion: number,
+  request?: Request
+): Promise<string | null> {
+  const secret = resolveSessionSecret(env);
+  if (!secret) return null;
   const exp = Date.now() + SESSION_MAX_AGE * 1000;
-  const payload = `${userId}.${exp}`;
-  const token = await signSession(getSessionSecret(env), payload);
-  return `${USER_SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_MAX_AGE}`;
+  const payload = `${userId}.${sessionVersion}.${exp}`;
+  const token = await signSession(secret, payload);
+  return `${USER_SESSION_COOKIE}=${token}; ${sessionCookieAttrs('/', SESSION_MAX_AGE, request)}`;
 }
 
-export function clearUserSessionCookie(): string {
-  return `${USER_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`;
+export function clearUserSessionCookie(request?: Request): string {
+  return `${USER_SESSION_COOKIE}=; ${sessionCookieAttrs('/', 0, request)}`;
 }
 
 /** Session cookie or user Bearer token (any scope); legacy admin tokens are not accepted. */
@@ -186,14 +242,15 @@ export async function getAuthenticatedUser(
   const session = getCookieValue(request, USER_SESSION_COOKIE);
   if (!session) return null;
 
-  const payload = await verifySessionToken(getSessionSecret(env), session);
-  if (!payload) return null;
+  const secret = resolveSessionSecret(env);
+  if (!secret) return null;
 
-  const userId = parseInt(payload.split('.')[0], 10);
-  if (!userId) return null;
+  const verified = await verifyUserSessionToken(secret, session);
+  if (!verified) return null;
 
-  const user = await getUserById(db, userId);
+  const user = await getUserById(db, verified.userId);
   if (!user || !user.enabled) return null;
+  if (user.sessionVersion !== verified.sessionVersion) return null;
   return user;
 }
 
@@ -202,7 +259,7 @@ export type SendFromAuthMode = 'user' | 'legacy';
 /**
  * Resolve and authorize a custom from address for outbound mail.
  * User mode: mailbox must belong to userId.
- * Legacy mode: only unowned mailboxes (user_id IS NULL).
+ * Legacy mode: mailbox must belong to the legacy token.
  */
 export async function resolveSendFromAddress(
   db: D1Database,
@@ -210,7 +267,8 @@ export async function resolveSendFromAddress(
   allowedDomains: string | string[],
   mode: SendFromAuthMode,
   userId?: number | null,
-  defaultDomain?: string
+  defaultDomain?: string,
+  legacyTokenId?: number | null
 ): Promise<{ ok: true; fromEmail?: string } | { ok: false; error: string }> {
   if (from == null || from === '') {
     return { ok: true };
@@ -234,7 +292,7 @@ export async function resolveSendFromAddress(
     if (!owned) {
       return { ok: false, error: '无权使用该发件地址' };
     }
-  } else if (mode !== 'legacy') {
+  } else if (mode !== 'legacy' || legacyTokenId == null || mailbox.legacyTokenId !== legacyTokenId) {
     return { ok: false, error: '无权使用该发件地址' };
   }
 
@@ -251,13 +309,14 @@ export async function resolveSendFromAddress(
 export function canSendFromMailbox(
   mailbox: Mailbox,
   mode: SendFromAuthMode,
-  userId?: number | null
+  userId?: number | null,
+  legacyTokenId?: number | null
 ): { ok: true } | { ok: false; error: string } {
   if (mailbox.userId != null) {
     if (mode !== 'user' || userId == null || mailbox.userId !== userId) {
       return { ok: false, error: '无权使用该发件地址' };
     }
-  } else if (mode !== 'legacy') {
+  } else if (mode !== 'legacy' || legacyTokenId == null || mailbox.legacyTokenId !== legacyTokenId) {
     return { ok: false, error: '无权使用该发件地址' };
   }
   return { ok: true };
@@ -283,6 +342,7 @@ export async function resolveOutboundFrom(
     allowedDomains: string | string[];
     mode: SendFromAuthMode;
     userId?: number | null;
+    legacyTokenId?: number | null;
     ipAddress?: string | null;
   }
 ): Promise<{ ok: true; fromEmail: string } | { ok: false; error: string }> {
@@ -303,7 +363,8 @@ export async function resolveOutboundFrom(
       params.allowedDomains,
       params.mode,
       params.userId,
-      domainHint
+      domainHint,
+      params.legacyTokenId
     );
     if (!result.ok) return result;
     return { ok: true, fromEmail: result.fromEmail ?? `no-reply@${defaultDomain}` };
@@ -320,13 +381,13 @@ export async function resolveOutboundFrom(
   } else {
     mailbox = await getLatestLeasedMailbox(db, {
       userId: params.mode === 'user' ? params.userId : undefined,
-      ipAddress: params.mode === 'legacy' ? params.ipAddress : undefined,
+      legacyTokenId: params.mode === 'legacy' ? params.legacyTokenId : undefined,
       legacyOnly: params.mode === 'legacy',
     });
   }
 
   if (mailbox) {
-    const access = canSendFromMailbox(mailbox, params.mode, params.userId);
+    const access = canSendFromMailbox(mailbox, params.mode, params.userId, params.legacyTokenId);
     if (!access.ok) return access;
     if (params.mode === 'user' && params.userId != null) {
       const owned = await isMailboxOwnedByUser(db, mailbox.address, params.userId);

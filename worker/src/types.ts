@@ -8,6 +8,8 @@ export interface Env {
   VITE_EMAIL_DOMAIN?: string;
   MAIL_DOMAIN?: string;
   ADMIN_PASSWORD?: string;
+  /** HMAC key for user/admin session cookies. Required for login sessions. Use `wrangler secret put SESSION_SECRET`. */
+  SESSION_SECRET?: string;
   /** Secret URL segment for admin UI (UUID recommended). No leading slash. */
   ADMIN_PATH?: string;
   BREVO_API_KEY?: string;
@@ -24,14 +26,21 @@ export interface Env {
 export type UserRole = 'admin' | 'user';
 export type TokenScope = 'lease' | 'mail' | 'send';
 
-/** Maximum API tokens a user may hold (active or expired until deleted). */
-export const MAX_USER_TOKENS = 3;
+/** Default maximum API tokens a user may hold (active or expired until deleted). */
+export const DEFAULT_MAX_USER_TOKENS = 3;
+
+/** @deprecated Use {@link DEFAULT_MAX_USER_TOKENS} or `getMaxUserTokens()` at runtime. */
+export const MAX_USER_TOKENS = DEFAULT_MAX_USER_TOKENS;
 
 export interface User {
   id: number;
   username: string;
   role: UserRole;
   dailySendQuota: number;
+  /** Daily limit on creating random mailboxes (-1 = unlimited). */
+  dailyLeaseQuota: number;
+  /** Bumped on password change to invalidate existing session cookies. */
+  sessionVersion: number;
   /** Requests per minute; null uses platform default (60). */
   rateLimitPerMin: number | null;
   /** Extra requests allowed per minute window; null/0 = no burst. */
@@ -68,13 +77,18 @@ export interface ApiAuthContext {
   tokenId?: number;
   scopes: TokenScope[];
   dailySendQuota?: number;
+  dailyLeaseQuota?: number;
 }
 
 export interface CreateUserParams {
   username: string;
-  password: string;
+  /** Plain password; ignored when passwordHash is set. */
+  password?: string;
+  /** Pre-hashed password (e.g. from registration pending row). */
+  passwordHash?: string;
   role?: UserRole;
   dailySendQuota?: number;
+  dailyLeaseQuota?: number;
   rateLimitPerMin?: number | null;
   rateLimitBurst?: number | null;
 }
@@ -82,6 +96,7 @@ export interface CreateUserParams {
 export interface UpdateUserParams {
   role?: UserRole;
   dailySendQuota?: number;
+  dailyLeaseQuota?: number;
   rateLimitPerMin?: number | null;
   rateLimitBurst?: number | null;
   enabled?: boolean;
@@ -103,7 +118,8 @@ export interface Mailbox {
   ipAddress: string;
   lastAccessed: number;
   userId?: number | null;
-  /** 邮箱绑定的发信/展示域名 */
+  /** Legacy API token that leased this mailbox (when user_id IS NULL). */
+  legacyTokenId?: number | null;
   mailDomain?: string | null;
 }
 
@@ -113,6 +129,7 @@ export interface CreateMailboxParams {
   expiresInHours: number;
   ipAddress: string;
   userId?: number | null;
+  legacyTokenId?: number | null;
   mailDomain?: string | null;
 }
 
@@ -188,6 +205,35 @@ export interface SaveExtractRuleParams {
   enabled?: boolean;
   userId?: number | null;
   remark?: string | null;
+}
+
+export type ExtractRuleTemplateStatus = 'pending' | 'approved' | 'rejected';
+
+export interface ExtractRuleTemplate {
+  id: number;
+  domain: string;
+  regex: string;
+  priority: number;
+  title: string;
+  remark: string | null;
+  authorUserId: number;
+  authorUsername?: string;
+  status: ExtractRuleTemplateStatus;
+  rejectReason: string | null;
+  reviewedAt: number | null;
+  installCount: number;
+  sourceRuleId: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PublishExtractRuleTemplateParams {
+  domain: string;
+  regex: string;
+  priority?: number;
+  title: string;
+  remark?: string | null;
+  sourceRuleId?: number | null;
 }
 
 // 发信审计
@@ -266,6 +312,8 @@ export interface WriteAuditLogParams {
 }
 
 export const DEFAULT_LEGACY_SEND_DAILY_QUOTA = 50;
+/** Default daily random-mailbox (lease) quota for new users. */
+export const DEFAULT_DAILY_LEASE_QUOTA = 300;
 
 export interface MaintenanceMode {
   enabled: boolean;

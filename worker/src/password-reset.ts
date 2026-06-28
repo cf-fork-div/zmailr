@@ -166,7 +166,7 @@ export async function verifyPasswordResetCode(
   }
 
   await db
-    .prepare(`UPDATE users SET password_hash = ? WHERE id = ?`)
+    .prepare(`UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?`)
     .bind(pending.passwordHash, user.id)
     .run();
 
