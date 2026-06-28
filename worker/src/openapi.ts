@@ -785,7 +785,9 @@ export const OPENAPI_SPEC = {
         tags: ['Bearer'],
         summary: 'Wait for mail (long poll)',
         operationId: 'waitForMail',
-        description: 'Long-polling wait for new mail. Default timeout 60s (max 55s).',
+        description:
+          'Long-polling wait for new mail. Default timeout 30s (max 30s), poll interval 3s. ' +
+          'Limit concurrent long-poll requests per Bearer token (recommended ≤3); use client backoff on 408 timeout.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -798,7 +800,7 @@ export const OPENAPI_SPEC = {
           {
             name: 'timeout',
             in: 'query',
-            schema: { type: 'integer', default: 60, minimum: 1, maximum: 55 },
+            schema: { type: 'integer', default: 30, minimum: 1, maximum: 30 },
           },
           {
             name: 'since',

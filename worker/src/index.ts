@@ -9,6 +9,7 @@ import {
 } from './database';
 import { ensureMailDomainsSeeded, resolveDefaultMailDomain } from './mail-domains';
 import { handleEmail } from './email-handler';
+import { assertProductionConfig } from './env-guard';
 import app from './routes';
 
 // 导出Worker处理函数
@@ -16,6 +17,7 @@ export default {
   // 处理HTTP请求
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
+      assertProductionConfig(env);
       await ensureDatabaseInitialized(env.DB, env.ADMIN_PASSWORD);
       await ensureMailDomainsSeeded(env.DB, env);
       const defaultDomain = await resolveDefaultMailDomain(env.DB, env);
@@ -41,6 +43,7 @@ export default {
   // 处理邮件
   async email(message: any, env: Env, _ctx: ExecutionContext): Promise<void> {
     try {
+      assertProductionConfig(env);
       await ensureDatabaseInitialized(env.DB, env.ADMIN_PASSWORD);
       await ensureMailDomainsSeeded(env.DB, env);
       await handleEmail(message, env);

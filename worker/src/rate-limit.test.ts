@@ -4,11 +4,39 @@ import {
   DEFAULT_USER_RATE_LIMIT,
   RATE_LIMIT_PLANS,
   effectiveRateLimitMax,
+  getClientIp,
   getGlobalIpRateLimitKey,
   getUserRateLimitKey,
+  getUserTokenRateLimitKey,
   rateLimitHeaders,
   resolveUserRateLimits,
 } from './rate-limit';
+
+describe('getClientIp', () => {
+  it('uses CF-Connecting-IP only', () => {
+    const req = new Request('https://example.com', {
+      headers: {
+        'CF-Connecting-IP': '203.0.113.42',
+        'X-Forwarded-For': '198.51.100.1',
+      },
+    });
+    assert.equal(getClientIp(req), '203.0.113.42');
+  });
+
+  it('ignores spoofed X-Forwarded-For when CF header is absent', () => {
+    const req = new Request('https://example.com', {
+      headers: { 'X-Forwarded-For': '198.51.100.1' },
+    });
+    assert.equal(getClientIp(req), 'unknown');
+  });
+
+  it('returns unknown when CF-Connecting-IP is blank', () => {
+    const req = new Request('https://example.com', {
+      headers: { 'CF-Connecting-IP': '   ' },
+    });
+    assert.equal(getClientIp(req), 'unknown');
+  });
+});
 
 describe('getGlobalIpRateLimitKey', () => {
   it('uses CF-Connecting-IP when present', () => {
@@ -29,6 +57,12 @@ describe('getGlobalIpRateLimitKey', () => {
 describe('getUserRateLimitKey', () => {
   it('scopes counters by user id', () => {
     assert.equal(getUserRateLimitKey(42), 'user:42');
+  });
+});
+
+describe('getUserTokenRateLimitKey', () => {
+  it('scopes counters by user token id', () => {
+    assert.equal(getUserTokenRateLimitKey(7), 'user-token:7');
   });
 });
 

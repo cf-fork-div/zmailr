@@ -21,6 +21,8 @@ export interface Env {
   RATE_LIMIT_PER_MIN?: string;
   /** Comma-separated extra CORS origins (full URLs, e.g. https://app.example.com). */
   CORS_ALLOWED_ORIGINS?: string;
+  /** Set to `1` in `.dev.vars` only — allows default ADMIN_PATH=admin locally. */
+  LOCAL_DEV?: string;
 }
 
 export type UserRole = 'admin' | 'user';
@@ -45,6 +47,8 @@ export interface User {
   rateLimitPerMin: number | null;
   /** Extra requests allowed per minute window; null/0 = no burst. */
   rateLimitBurst: number | null;
+  /** Max Bearer API tokens this user may hold (including expired, until deleted). */
+  maxUserTokens: number;
   enabled: boolean;
   createdAt: number;
   lastLoginAt: number | null;
@@ -72,12 +76,11 @@ export interface DailyUsage {
 }
 
 export interface ApiAuthContext {
-  type: 'legacy' | 'user';
-  userId?: number;
-  tokenId?: number;
+  userId: number;
+  tokenId: number;
   scopes: TokenScope[];
-  dailySendQuota?: number;
-  dailyLeaseQuota?: number;
+  dailySendQuota: number;
+  dailyLeaseQuota: number;
 }
 
 export interface CreateUserParams {
@@ -91,6 +94,7 @@ export interface CreateUserParams {
   dailyLeaseQuota?: number;
   rateLimitPerMin?: number | null;
   rateLimitBurst?: number | null;
+  maxUserTokens?: number;
 }
 
 export interface UpdateUserParams {
@@ -99,6 +103,7 @@ export interface UpdateUserParams {
   dailyLeaseQuota?: number;
   rateLimitPerMin?: number | null;
   rateLimitBurst?: number | null;
+  maxUserTokens?: number;
   enabled?: boolean;
   password?: string;
 }
@@ -166,20 +171,6 @@ export interface SaveEmailParams {
   extractedCode?: string | null;
   matchedRuleId?: number | null;
   rawContent?: string | null;
-}
-
-// API Token
-export interface ApiToken {
-  id: number;
-  token: string;
-  name: string | null;
-  expiresAt: number;
-  createdAt: number;
-}
-
-export interface CreateApiTokenParams {
-  name?: string;
-  expiresInDays: number;
 }
 
 // 验证码提取规则（userId 为 null 表示全局/admin 规则）
@@ -311,9 +302,11 @@ export interface WriteAuditLogParams {
   ip?: string | null;
 }
 
-export const DEFAULT_LEGACY_SEND_DAILY_QUOTA = 50;
 /** Default daily random-mailbox (lease) quota for new users. */
 export const DEFAULT_DAILY_LEASE_QUOTA = 300;
+
+/** Max non-expired mailboxes per user (random + custom). */
+export const DEFAULT_MAX_USER_MAILBOXES = 50;
 
 export interface MaintenanceMode {
   enabled: boolean;

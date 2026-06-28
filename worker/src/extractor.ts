@@ -1,7 +1,7 @@
 import { D1Database } from '@cloudflare/workers-types';
 import { getEnabledExtractRules } from './database';
 import type { ExtractRule } from './types';
-import { MAX_REGEX_MATCH_TEXT_LENGTH } from './utils';
+import { MAX_REGEX_MATCH_TEXT_LENGTH, isDangerousRegexPattern, MAX_REGEX_EXEC_MS } from './utils';
 
 /** 通用兜底正则（支持「验证码为/是：123456」等常见中文格式） */
 export const GENERIC_CODE_REGEX =
@@ -211,12 +211,21 @@ export function extractLink(text: string, html?: string): string | null {
 }
 
 export function matchWithRegex(text: string, pattern: string): string | null {
+  if (isDangerousRegexPattern(pattern)) {
+    console.warn('Rejected dangerous regex at runtime:', pattern);
+    return null;
+  }
   try {
     const slice = text.length > MAX_REGEX_MATCH_TEXT_LENGTH
       ? text.slice(0, MAX_REGEX_MATCH_TEXT_LENGTH)
       : text;
+    const started = Date.now();
     const regex = new RegExp(pattern, 'i');
     const match = slice.match(regex);
+    if (Date.now() - started > MAX_REGEX_EXEC_MS) {
+      console.warn('Regex match exceeded time budget:', pattern);
+      return null;
+    }
     if (!match) return null;
     if (match[1]) return match[1];
     const digits = match[0].match(/\d{4,8}/);

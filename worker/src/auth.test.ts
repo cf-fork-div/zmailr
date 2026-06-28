@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { assertMailboxAccess, canSendFromMailbox, resolveSessionSecret } from './auth';
 import {
   DEFAULT_DAILY_LEASE_QUOTA,
-  DEFAULT_LEGACY_SEND_DAILY_QUOTA,
   type ApiAuthContext,
   type Env,
   type Mailbox,
@@ -20,9 +19,9 @@ const ownedMailbox: Mailbox = {
   userId: 42,
 };
 
-const legacyMailbox: Mailbox = {
+const orphanMailbox: Mailbox = {
   ...ownedMailbox,
-  id: 'mb-legacy',
+  id: 'mb-orphan',
   userId: null,
   legacyTokenId: 7,
 };
@@ -36,6 +35,7 @@ const owner: User = {
   sessionVersion: 0,
   rateLimitPerMin: 60,
   rateLimitBurst: null,
+  maxUserTokens: 3,
   enabled: true,
   createdAt: 0,
   lastLoginAt: null,
@@ -47,32 +47,12 @@ const otherUser: User = {
   username: 'bob',
 };
 
-const adminUser: User = {
-  ...owner,
-  id: 1,
-  username: 'admin',
-  role: 'admin',
-};
-
 const userAuth: ApiAuthContext = {
-  type: 'user',
   userId: 42,
   tokenId: 1,
   scopes: ['mail'],
   dailySendQuota: 50,
   dailyLeaseQuota: DEFAULT_DAILY_LEASE_QUOTA,
-};
-
-const legacyAuth: ApiAuthContext = {
-  type: 'legacy',
-  tokenId: 7,
-  scopes: ['lease', 'mail', 'send'],
-};
-
-const otherLegacyAuth: ApiAuthContext = {
-  type: 'legacy',
-  tokenId: 99,
-  scopes: ['lease', 'mail', 'send'],
 };
 
 describe('assertMailboxAccess', () => {
@@ -95,20 +75,9 @@ describe('assertMailboxAccess', () => {
     );
   });
 
-  it('allows legacy bearer on mailbox leased by same token', () => {
-    assert.equal(assertMailboxAccess(legacyMailbox, { auth: legacyAuth }), true);
-  });
-
-  it('denies legacy bearer on mailbox leased by another token', () => {
-    assert.equal(assertMailboxAccess(legacyMailbox, { auth: otherLegacyAuth }), false);
-  });
-
-  it('denies admin session on legacy mailbox', () => {
-    assert.equal(assertMailboxAccess(legacyMailbox, { user: adminUser }), false);
-  });
-
-  it('denies regular user session on legacy mailbox', () => {
-    assert.equal(assertMailboxAccess(legacyMailbox, { user: owner }), false);
+  it('denies access to orphan legacy mailboxes', () => {
+    assert.equal(assertMailboxAccess(orphanMailbox, { auth: userAuth }), false);
+    assert.equal(assertMailboxAccess(orphanMailbox, { user: owner }), false);
   });
 
   it('denies unauthenticated access', () => {
@@ -117,26 +86,12 @@ describe('assertMailboxAccess', () => {
 });
 
 describe('canSendFromMailbox', () => {
-  it('allows user token on owned mailbox', () => {
-    assert.equal(canSendFromMailbox(ownedMailbox, 'user', 42).ok, true);
+  it('allows user on owned mailbox', () => {
+    assert.equal(canSendFromMailbox(ownedMailbox, 42).ok, true);
   });
 
-  it('denies user token on legacy mailbox', () => {
-    assert.equal(canSendFromMailbox(legacyMailbox, 'user', 42).ok, false);
-  });
-
-  it('allows legacy token on mailbox it leased', () => {
-    assert.equal(canSendFromMailbox(legacyMailbox, 'legacy', null, 7).ok, true);
-  });
-
-  it('denies legacy token on mailbox leased by another token', () => {
-    assert.equal(canSendFromMailbox(legacyMailbox, 'legacy', null, 99).ok, false);
-  });
-});
-
-describe('DEFAULT_LEGACY_SEND_DAILY_QUOTA', () => {
-  it('defaults to 50', () => {
-    assert.equal(DEFAULT_LEGACY_SEND_DAILY_QUOTA, 50);
+  it('denies user on orphan mailbox', () => {
+    assert.equal(canSendFromMailbox(orphanMailbox, 42).ok, false);
   });
 });
 

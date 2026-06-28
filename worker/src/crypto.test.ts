@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { hashPassword, verifyPassword, hashToken } from './crypto';
+import { hashPassword, verifyPassword, hashToken, secureCompareHex } from './crypto';
 
 describe('hashPassword / verifyPassword', () => {
   it('hashes and verifies a password', async () => {
@@ -27,5 +27,16 @@ describe('hashToken', () => {
     const a = await hashToken('token-a');
     const b = await hashToken('token-b');
     assert.notEqual(a, b);
+  });
+});
+
+describe('secureCompareHex', () => {
+  it('matches equal hex strings', () => {
+    const hex = 'a'.repeat(64);
+    assert.equal(secureCompareHex(hex, hex), true);
+  });
+
+  it('rejects different lengths', () => {
+    assert.equal(secureCompareHex('aa', 'aaaa'), false);
   });
 });

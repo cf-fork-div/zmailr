@@ -8,8 +8,6 @@ import {
   Attachment,
   AttachmentListItem,
   SaveAttachmentParams,
-  ApiToken,
-  CreateApiTokenParams,
   ExtractRule,
   UserExtractRule,
   SaveExtractRuleParams,
@@ -40,7 +38,6 @@ import {
   DEFAULT_TURNSTILE_SETTINGS,
   TurnstileSettingsAdminView,
   RegistrationVerificationRow,
-  DEFAULT_LEGACY_SEND_DAILY_QUOTA,
   DEFAULT_DAILY_LEASE_QUOTA,
   DEFAULT_MAX_USER_TOKENS,
   RateLimitStats,
@@ -66,8 +63,9 @@ import {
   calculateExpiryTimestamp,
   generateApiToken,
   shouldTouchTokenLastUsed,
+  escapeLikePattern,
 } from './utils';
-import { hashPassword, hashToken } from './crypto';
+import { hashPassword, hashToken, verifyPassword } from './crypto';
 import { SEED_GLOBAL_EXTRACT_RULES } from './extractor';
 import { storeAttachmentInR2 } from './r2-attachments';
 import type { SaveAttachmentOptions } from './types';
@@ -103,7 +101,7 @@ export async function ensureDatabaseInitialized(
 /**
  * 初始化数据库
  * @param db 数据库实例
- * @param adminPassword 首次迁移时用于创建 admin 用户
+ * @param adminPassword 同步管理后台密码哈希至 system_settings（ADMIN_PASSWORD）
  */
 export async function initializeDatabase(db: D1Database, adminPassword?: string): Promise<void> {
   try {
@@ -156,6 +154,8 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
       `UPDATE users SET daily_lease_quota = -1 WHERE role = 'admin' OR daily_send_quota < 0`
     ).run();
     await migrateAddColumn(db, 'users', 'session_version', 'INTEGER NOT NULL DEFAULT 0');
+    await migrateAddColumn(db, 'users', 'max_user_tokens', `INTEGER NOT NULL DEFAULT ${DEFAULT_MAX_USER_TOKENS}`);
+    await migrateGlobalMaxUserTokensToUsers(db);
     await migrateAddColumn(db, 'mailboxes', 'legacy_token_id', 'INTEGER');
     await migrateAddColumn(db, 'mailboxes', 'lease_counted_date', 'TEXT');
     await migratePlaintextApiTokens(db);
@@ -194,7 +194,9 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_extract_rule_templates_status ON extract_rule_templates(status);`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_extract_rule_templates_author ON extract_rule_templates(author_user_id);`);
 
-    await seedAdminUser(db, adminPassword);
+    await ensureAdminCredentials(db, adminPassword);
+    await migrateLegacyApiTokens(db);
+    await deprecateSeededAdminUser(db);
     await seedGuestUser(db);
     await seedGlobalExtractRules(db);
 
@@ -203,6 +205,31 @@ export async function initializeDatabase(db: D1Database, adminPassword?: string)
     console.error('数据库初始化失败:', error);
     // 抛出错误，让上层处理
     throw new Error(`数据库初始化失败: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function migrateLegacyApiTokens(db: D1Database): Promise<void> {
+  const done = await getSystemSetting(db, 'legacy_token_migration_v1');
+  if (done === 'done') return;
+
+  const pending = await db
+    .prepare(`SELECT COUNT(*) as c FROM mailboxes WHERE legacy_token_id IS NOT NULL`)
+    .first<{ c: number }>();
+
+  await db
+    .prepare(`UPDATE mailboxes SET legacy_token_id = NULL WHERE legacy_token_id IS NOT NULL`)
+    .run();
+
+  const legacyTokens = await db.prepare(`SELECT COUNT(*) as c FROM api_tokens`).first<{ c: number }>();
+  await db.prepare(`DELETE FROM api_tokens`).run();
+
+  await setSystemSetting(db, 'legacy_token_migration_v1', 'done');
+  const tokenCount = legacyTokens?.c ?? 0;
+  const pendingCount = pending?.c ?? 0;
+  if (tokenCount > 0 || pendingCount > 0) {
+    console.log(
+      `Legacy Token 已废弃：删除 ${tokenCount} 个全局 Token，清除 ${pendingCount} 个邮箱 legacy 关联（请使用 Dashboard API 密钥）`
+    );
   }
 }
 
@@ -231,15 +258,21 @@ async function migrateAddColumn(db: D1Database, table: string, column: string, d
   }
 }
 
-async function seedAdminUser(db: D1Database, adminPassword?: string): Promise<void> {
-  if (!adminPassword) return;
-  const count = await db.prepare(`SELECT COUNT(*) as c FROM users`).first<{ c: number }>();
-  if ((count?.c ?? 0) > 0) return;
-  const passwordHash = await hashPassword(adminPassword);
-  await db.prepare(
-    `INSERT INTO users (username, password_hash, role, daily_send_quota, daily_lease_quota, enabled) VALUES (?, ?, 'admin', -1, -1, 1)`
-  ).bind('admin', passwordHash).run();
-  console.log('已创建初始 admin 用户');
+/** Disable auto-seeded `admin` DB user; panel auth uses ADMIN_PASSWORD cookie only. */
+async function deprecateSeededAdminUser(db: D1Database): Promise<void> {
+  const done = await getSystemSetting(db, 'seeded_admin_user_removed_v1');
+  if (done === 'done') return;
+
+  const row = await db
+    .prepare(`SELECT id FROM users WHERE username = 'admin' AND role = 'admin' LIMIT 1`)
+    .first<{ id: number }>();
+  if (row) {
+    await db.prepare(`UPDATE mailboxes SET user_id = NULL WHERE user_id = ?`).bind(row.id).run();
+    await db.prepare(`UPDATE users SET enabled = 0 WHERE id = ?`).bind(row.id).run();
+    console.log('已禁用自动创建的 admin 数据库用户（管理后台请使用 ADMIN_PASSWORD）');
+  }
+
+  await setSystemSetting(db, 'seeded_admin_user_removed_v1', 'done');
 }
 
 /** 首次部署时创建 guest/guest 演示账号；已存在则跳过（不覆盖密码）。 */
@@ -288,6 +321,9 @@ function mapUser(row: Record<string, unknown>): User {
     sessionVersion: (row.session_version as number | null | undefined) ?? 0,
     rateLimitPerMin: (row.rate_limit_per_min as number | null | undefined) ?? null,
     rateLimitBurst: burstRaw != null && burstRaw > 0 ? burstRaw : null,
+    maxUserTokens: normalizeMaxUserTokens(
+      (row.max_user_tokens as number | null | undefined) ?? DEFAULT_MAX_USER_TOKENS
+    ),
     enabled: !!row.enabled,
     createdAt: row.created_at as number,
     lastLoginAt: (row.last_login_at as number | null) ?? null,
@@ -386,25 +422,13 @@ export async function getMailboxRaw(db: D1Database, address: string): Promise<Ma
   return rowToMailbox(result as Record<string, unknown>);
 }
 
-/** 最近租用的未过期邮箱（用户按 user_id，Legacy 按 legacy_token_id） */
+/** 最近租用的未过期邮箱（按 user_id） */
 export async function getLatestLeasedMailbox(
   db: D1Database,
-  opts: { userId?: number | null; legacyTokenId?: number | null; legacyOnly?: boolean }
+  opts: { userId?: number | null }
 ): Promise<Mailbox | null> {
-  const now = getCurrentTimestamp();
-  if (opts.legacyOnly) {
-    if (opts.legacyTokenId == null) return null;
-    const row = await db
-      .prepare(
-        `SELECT ${MAILBOX_COLUMNS} FROM mailboxes
-         WHERE user_id IS NULL AND legacy_token_id = ? AND expires_at > ?
-         ORDER BY created_at DESC LIMIT 1`
-      )
-      .bind(opts.legacyTokenId, now)
-      .first();
-    return row ? rowToMailbox(row as Record<string, unknown>) : null;
-  }
   if (opts.userId == null) return null;
+  const now = getCurrentTimestamp();
   const row = await db
     .prepare(
       `SELECT ${MAILBOX_COLUMNS} FROM mailboxes
@@ -1270,57 +1294,6 @@ export async function deleteUserSentEmails(
   return 0;
 }
 
-// ─── API Token ───────────────────────────────────────────────
-
-function maskStoredApiToken(stored: string): string {
-  if (stored.length <= 8) return '••••••••';
-  return `••••${stored.slice(-4)}`;
-}
-
-export async function verifyApiToken(db: D1Database, token: string): Promise<{ id: number } | null> {
-  const nowMs = Date.now();
-  const tokenHash = await hashToken(token);
-  const row = await db
-    .prepare(`SELECT id FROM api_tokens WHERE token = ? AND expires_at > ?`)
-    .bind(tokenHash, nowMs)
-    .first<{ id: number }>();
-  return row ?? null;
-}
-
-export async function listApiTokens(db: D1Database): Promise<ApiToken[]> {
-  const results = await db.prepare(
-    `SELECT id, token, name, expires_at, created_at FROM api_tokens ORDER BY created_at DESC`
-  ).all();
-  if (!results.results) return [];
-  return results.results.map(row => ({
-    id: row.id as number,
-    token: maskStoredApiToken(row.token as string),
-    name: row.name as string | null,
-    expiresAt: row.expires_at as number,
-    createdAt: row.created_at as number,
-  }));
-}
-
-export async function createApiToken(db: D1Database, params: CreateApiTokenParams): Promise<ApiToken> {
-  const token = generateApiToken();
-  const tokenHash = await hashToken(token);
-  const expiresAt = Date.now() + params.expiresInDays * 24 * 60 * 60 * 1000;
-  const result = await db.prepare(
-    `INSERT INTO api_tokens (token, name, expires_at) VALUES (?, ?, ?) RETURNING id, name, expires_at, created_at`
-  ).bind(tokenHash, params.name ?? null, expiresAt).first();
-  return {
-    id: result!.id as number,
-    token,
-    name: result!.name as string | null,
-    expiresAt: result!.expires_at as number,
-    createdAt: result!.created_at as number,
-  };
-}
-
-export async function deleteApiToken(db: D1Database, id: number): Promise<void> {
-  await db.prepare(`DELETE FROM api_tokens WHERE id = ?`).bind(id).run();
-}
-
 // ─── Extract Rules ───────────────────────────────────────────
 
 const EXTRACT_RULE_COLUMNS =
@@ -1550,8 +1523,10 @@ export async function listApprovedExtractRuleTemplates(
     binds.push(opts.domain.trim().toLowerCase());
   }
   if (opts.q?.trim()) {
-    const like = `%${opts.q.trim().toLowerCase()}%`;
-    conditions.push(`(LOWER(t.domain) LIKE ? OR LOWER(t.title) LIKE ? OR LOWER(COALESCE(t.remark, '')) LIKE ?)`);
+    const like = `%${escapeLikePattern(opts.q.trim().toLowerCase())}%`;
+    conditions.push(
+      `(LOWER(t.domain) LIKE ? ESCAPE '\\' OR LOWER(t.title) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(t.remark, '')) LIKE ? ESCAPE '\\')`
+    );
     binds.push(like, like, like);
   }
 
@@ -2152,7 +2127,7 @@ export async function findInstantLatestEmail(
 // ─── Users & Auth ────────────────────────────────────────────
 
 const USER_COLUMNS =
-  'id, username, role, daily_send_quota, daily_lease_quota, rate_limit_per_min, rate_limit_burst, enabled, created_at, last_login_at, session_version';
+  'id, username, role, daily_send_quota, daily_lease_quota, rate_limit_per_min, rate_limit_burst, max_user_tokens, enabled, created_at, last_login_at, session_version';
 
 export async function getUserById(db: D1Database, id: number): Promise<User | null> {
   const result = await db.prepare(
@@ -2188,9 +2163,10 @@ export async function createUser(db: D1Database, params: CreateUserParams): Prom
   const rateLimitPerMin = params.rateLimitPerMin ?? 60;
   const rateLimitBurst =
     params.rateLimitBurst != null && params.rateLimitBurst > 0 ? params.rateLimitBurst : null;
+  const maxUserTokens = normalizeMaxUserTokens(params.maxUserTokens ?? DEFAULT_MAX_USER_TOKENS);
   const result = await db.prepare(
-    `INSERT INTO users (username, password_hash, role, daily_send_quota, daily_lease_quota, rate_limit_per_min, rate_limit_burst, enabled)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+    `INSERT INTO users (username, password_hash, role, daily_send_quota, daily_lease_quota, rate_limit_per_min, rate_limit_burst, max_user_tokens, enabled)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
      RETURNING ${USER_COLUMNS}`
   ).bind(
     params.username,
@@ -2199,7 +2175,8 @@ export async function createUser(db: D1Database, params: CreateUserParams): Prom
     params.dailySendQuota ?? 50,
     params.dailyLeaseQuota ?? DEFAULT_DAILY_LEASE_QUOTA,
     rateLimitPerMin,
-    rateLimitBurst
+    rateLimitBurst,
+    maxUserTokens
   ).first();
   return mapUser(result as Record<string, unknown>);
 }
@@ -2233,6 +2210,12 @@ export async function updateUser(db: D1Database, id: number, params: UpdateUserP
   if (params.rateLimitBurst !== undefined) {
     const burst = params.rateLimitBurst != null && params.rateLimitBurst > 0 ? params.rateLimitBurst : null;
     await db.prepare(`UPDATE users SET rate_limit_burst = ? WHERE id = ?`).bind(burst, id).run();
+  }
+  if (params.maxUserTokens !== undefined) {
+    await db
+      .prepare(`UPDATE users SET max_user_tokens = ? WHERE id = ?`)
+      .bind(normalizeMaxUserTokens(params.maxUserTokens), id)
+      .run();
   }
 
   return getUserById(db, id);
@@ -2404,9 +2387,18 @@ export async function checkLeaseQuota(
   if (quota < 0) return { ok: true };
   const usage = await getDailyUsage(db, userId);
   if (usage.leaseCount >= quota) {
-    return { ok: false, error: `已达到每日随机邮箱配额 (${quota})` };
+    return { ok: false, error: `已达到每日邮箱创建配额 (${quota})` };
   }
   return { ok: true };
+}
+
+export async function countActiveUserMailboxes(db: D1Database, userId: number): Promise<number> {
+  const now = getCurrentTimestamp();
+  const row = await db
+    .prepare(`SELECT COUNT(*) AS c FROM mailboxes WHERE user_id = ? AND expires_at > ?`)
+    .bind(userId, now)
+    .first<{ c: number }>();
+  return row?.c ?? 0;
 }
 
 export async function incrementSendUsage(db: D1Database, userId: number): Promise<void> {
@@ -2751,7 +2743,6 @@ export async function getApiRequestStats(db: D1Database): Promise<ApiRequestStat
 // ─── System settings & maintenance mode ──────────────────────
 
 const MAINTENANCE_MODE_KEY = 'maintenance_mode';
-const LEGACY_SEND_DAILY_QUOTA_KEY = 'legacy_send_daily_quota';
 const MAX_USER_TOKENS_KEY = 'max_user_tokens';
 
 export function normalizeMaxUserTokens(limit: number): number {
@@ -2765,24 +2756,28 @@ export async function getMaxUserTokens(db: D1Database): Promise<number> {
   return normalizeMaxUserTokens(parseInt(raw, 10));
 }
 
+/** Per-user API token cap (falls back to default 3). */
+export function resolveUserMaxTokens(user: Pick<User, 'maxUserTokens'>): number {
+  return normalizeMaxUserTokens(user.maxUserTokens ?? DEFAULT_MAX_USER_TOKENS);
+}
+
+/** One-time: copy legacy global max_user_tokens setting onto all users. */
+async function migrateGlobalMaxUserTokensToUsers(db: D1Database): Promise<void> {
+  const done = await getSystemSetting(db, 'max_user_tokens_per_user_v1');
+  if (done === 'done') return;
+
+  const globalRaw = await getSystemSetting(db, MAX_USER_TOKENS_KEY);
+  if (globalRaw != null) {
+    const limit = normalizeMaxUserTokens(parseInt(globalRaw, 10));
+    await db.prepare(`UPDATE users SET max_user_tokens = ?`).bind(limit).run();
+  }
+
+  await setSystemSetting(db, 'max_user_tokens_per_user_v1', 'done');
+}
+
 export async function setMaxUserTokens(db: D1Database, limit: number): Promise<number> {
   const normalized = normalizeMaxUserTokens(limit);
   await setSystemSetting(db, MAX_USER_TOKENS_KEY, String(normalized));
-  return normalized;
-}
-
-export async function getLegacySendDailyQuota(db: D1Database): Promise<number> {
-  const raw = await getSystemSetting(db, LEGACY_SEND_DAILY_QUOTA_KEY);
-  if (raw == null) return DEFAULT_LEGACY_SEND_DAILY_QUOTA;
-  const parsed = parseInt(raw, 10);
-  if (parsed < 0) return -1;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_LEGACY_SEND_DAILY_QUOTA;
-}
-
-export async function setLegacySendDailyQuota(db: D1Database, quota: number): Promise<number> {
-  const normalized =
-    quota < 0 ? -1 : Number.isFinite(quota) && quota > 0 ? Math.floor(quota) : DEFAULT_LEGACY_SEND_DAILY_QUOTA;
-  await setSystemSetting(db, LEGACY_SEND_DAILY_QUOTA_KEY, String(normalized));
   return normalized;
 }
 
@@ -2816,6 +2811,54 @@ export async function setSystemSetting(db: D1Database, key: string, value: strin
     )
     .bind(key, value, now)
     .run();
+}
+
+// ─── Admin panel credentials (hashed password + session version) ───
+
+const ADMIN_PASSWORD_HASH_KEY = 'admin_password_hash';
+const ADMIN_SESSION_VERSION_KEY = 'admin_session_version';
+
+export async function getAdminSessionVersion(db: D1Database): Promise<number> {
+  const raw = await getSystemSetting(db, ADMIN_SESSION_VERSION_KEY);
+  const parsed = parseInt(raw ?? '0', 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+async function bumpAdminSessionVersion(db: D1Database): Promise<number> {
+  const next = (await getAdminSessionVersion(db)) + 1;
+  await setSystemSetting(db, ADMIN_SESSION_VERSION_KEY, String(next));
+  return next;
+}
+
+/** Seed or rotate admin password hash from env; bumps session version when env password changes. */
+export async function ensureAdminCredentials(db: D1Database, adminPassword?: string): Promise<void> {
+  const storedHash = await getSystemSetting(db, ADMIN_PASSWORD_HASH_KEY);
+
+  if (!storedHash) {
+    if (!adminPassword) return;
+    await setSystemSetting(db, ADMIN_PASSWORD_HASH_KEY, await hashPassword(adminPassword));
+    await setSystemSetting(db, ADMIN_SESSION_VERSION_KEY, '0');
+    return;
+  }
+
+  if (!adminPassword) return;
+
+  const matches = await verifyPassword(adminPassword, storedHash);
+  if (!matches) {
+    await setSystemSetting(db, ADMIN_PASSWORD_HASH_KEY, await hashPassword(adminPassword));
+    await bumpAdminSessionVersion(db);
+  }
+}
+
+export async function hasAdminCredentials(db: D1Database): Promise<boolean> {
+  const hash = await getSystemSetting(db, ADMIN_PASSWORD_HASH_KEY);
+  return !!hash;
+}
+
+export async function verifyAdminPassword(db: D1Database, password: string): Promise<boolean> {
+  const storedHash = await getSystemSetting(db, ADMIN_PASSWORD_HASH_KEY);
+  if (!storedHash) return false;
+  return verifyPassword(password, storedHash);
 }
 
 export async function getMaintenanceMode(db: D1Database): Promise<MaintenanceMode> {

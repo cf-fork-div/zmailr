@@ -2,9 +2,6 @@ import { Hono } from 'hono';
 import type { Env } from './types';
 import {
   getAdminStats,
-  listApiTokens,
-  createApiToken,
-  deleteApiToken,
   listExtractRules,
   listAllUserExtractRules,
   createExtractRule,
@@ -35,10 +32,6 @@ import {
   getTurnstileSettings,
   setTurnstileSettings,
   toAdminTurnstileView,
-  getLegacySendDailyQuota,
-  setLegacySendDailyQuota,
-  getMaxUserTokens,
-  setMaxUserTokens,
   listAuditLogs,
   writeAuditLog,
   listMailDomains,
@@ -54,8 +47,10 @@ import {
   verifyAdminPassword,
   createAdminSessionCookie,
   clearAdminSessionCookie,
+  hasAdminCredentials,
 } from './auth';
 import { getAdminHtml } from './admin';
+import { getAdminScript } from './admin-script';
 import { adminPathPrefix } from './admin-path';
 import {
   consumeRateLimit,
@@ -71,7 +66,8 @@ import {
 import { logRateLimitHit, logApiRequestStat } from './monitoring';
 import { fetchBrevoAccountIfConfigured } from './brevo-stats';
 import { ensureMailDomainsSeeded } from './mail-domains';
-import { applySecurityHeaders } from './security-headers';
+import { applySecurityHeaders, resolveAdminCspProfile } from './security-headers';
+import { validateRegistrationPassword } from './registration';
 
 async function globalIpRateLimitMiddleware(c: any, next: () => Promise<void>) {
   const rateKey = getGlobalIpRateLimitKey(c.req.header('CF-Connecting-IP'));
@@ -93,7 +89,7 @@ async function adminRequestStatsMiddleware(c: any, next: () => Promise<void>) {
 }
 
 async function requireAdmin(c: any): Promise<Response | null> {
-  if (!(await isAdminAuthenticated(c.req.raw, c.env))) {
+  if (!(await isAdminAuthenticated(c.req.raw, c.env, c.env.DB))) {
     return c.json({ success: false, error: '未授权' }, 401);
   }
   return null;
@@ -106,11 +102,22 @@ function adminIp(c: any): string {
 export function createAdminApp(): Hono<{ Bindings: Env }> {
   const admin = new Hono<{ Bindings: Env }>();
 
+  admin.use('/login', globalIpRateLimitMiddleware);
+  admin.use('/logout', globalIpRateLimitMiddleware);
   admin.use('/api/*', globalIpRateLimitMiddleware);
   admin.use('/api/*', adminRequestStatsMiddleware);
   admin.use('*', async (c, next) => {
     await next();
-    applySecurityHeaders(c.res.headers);
+    applySecurityHeaders(c.res.headers, resolveAdminCspProfile(c.req.path, c.res.headers.get('Content-Type')));
+  });
+
+  admin.get('/admin.js', (c) => {
+    const base = adminPathPrefix(c.env);
+    const script = getAdminScript(`${base}/api`, `${base}/login`, `${base}/logout`);
+    return c.body(script, 200, {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      'Cache-Control': 'private, no-cache',
+    });
   });
 
   admin.get('/', async (c) => {
@@ -120,7 +127,7 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
 
   admin.post('/login', async (c) => {
     try {
-      if (!c.env.ADMIN_PASSWORD) {
+      if (!(await hasAdminCredentials(c.env.DB))) {
         return c.json({ success: false, error: '未配置 ADMIN_PASSWORD' }, 503);
       }
       const ip = adminIp(c);
@@ -129,12 +136,12 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
         return c.json(rateLimitExceededBody(limitCheck.locked), 429, rateLimitHeaders(limitCheck));
       }
       const body = await c.req.json();
-      if (!verifyAdminPassword(c.env, body.password)) {
+      if (!(await verifyAdminPassword(c.env.DB, body.password))) {
         await recordLoginFailure(c.env.DB, ip, 'admin-login');
         return c.json({ success: false, error: '密码错误' }, 401);
       }
       await clearLoginFailures(c.env.DB, ip, 'admin-login');
-      const cookie = await createAdminSessionCookie(c.env, c.req.raw);
+      const cookie = await createAdminSessionCookie(c.env, c.env.DB, c.req.raw);
       if (!cookie) {
         return c.json({ success: false, error: '未配置 SESSION_SECRET' }, 503);
       }
@@ -203,17 +210,13 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
   admin.get('/api/maintenance', async (c) => {
     const authErr = await requireAdmin(c);
     if (authErr) return authErr;
-    const [maintenance, legacySendDailyQuota, maxUserTokens, turnstile] = await Promise.all([
+    const [maintenance, turnstile] = await Promise.all([
       getMaintenanceMode(c.env.DB),
-      getLegacySendDailyQuota(c.env.DB),
-      getMaxUserTokens(c.env.DB),
       getTurnstileSettings(c.env.DB),
     ]);
     return c.json({
       success: true,
       maintenance,
-      legacySendDailyQuota,
-      maxUserTokens,
       turnstile: toAdminTurnstileView(turnstile),
     });
   });
@@ -229,17 +232,6 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
       blockSend: body.blockSend !== false,
       blockMailboxCreate: body.blockMailboxCreate !== false,
     });
-    let legacySendDailyQuota = await getLegacySendDailyQuota(c.env.DB);
-    if (body.legacySendDailyQuota !== undefined && body.legacySendDailyQuota !== '') {
-      legacySendDailyQuota = await setLegacySendDailyQuota(
-        c.env.DB,
-        parseInt(String(body.legacySendDailyQuota), 10)
-      );
-    }
-    let maxUserTokens = await getMaxUserTokens(c.env.DB);
-    if (body.maxUserTokens !== undefined && body.maxUserTokens !== '') {
-      maxUserTokens = await setMaxUserTokens(c.env.DB, parseInt(String(body.maxUserTokens), 10));
-    }
     let turnstile = await getTurnstileSettings(c.env.DB);
     if (body.turnstile && typeof body.turnstile === 'object') {
       const t = body.turnstile as Record<string, unknown>;
@@ -251,8 +243,6 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
     }
     const detail: Record<string, unknown> = {
       ...(maintenance as unknown as Record<string, unknown>),
-      legacySendDailyQuota,
-      maxUserTokens,
       turnstile: toAdminTurnstileView(turnstile),
     };
     c.executionCtx.waitUntil(
@@ -267,8 +257,6 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
     return c.json({
       success: true,
       maintenance,
-      legacySendDailyQuota,
-      maxUserTokens,
       turnstile: toAdminTurnstileView(turnstile),
     });
   });
@@ -310,29 +298,6 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
     const to = toRaw ? parseInt(toRaw, 10) : undefined;
     const result = await listAuditLogs(c.env.DB, { page, limit, from, to });
     return c.json({ success: true, ...result });
-  });
-
-  admin.get('/api/tokens', async (c) => {
-    const authErr = await requireAdmin(c);
-    if (authErr) return authErr;
-    const tokens = await listApiTokens(c.env.DB);
-    return c.json({ success: true, tokens });
-  });
-
-  admin.post('/api/tokens', async (c) => {
-    const authErr = await requireAdmin(c);
-    if (authErr) return authErr;
-    const body = await c.req.json();
-    const expiresInDays = Math.min(Math.max(parseInt(body.expiresInDays) || 30, 1), 365);
-    const token = await createApiToken(c.env.DB, { name: body.name, expiresInDays });
-    return c.json({ success: true, token });
-  });
-
-  admin.delete('/api/tokens/:id', async (c) => {
-    const authErr = await requireAdmin(c);
-    if (authErr) return authErr;
-    await deleteApiToken(c.env.DB, parseInt(c.req.param('id'), 10));
-    return c.json({ success: true });
   });
 
   admin.get('/api/rules', async (c) => {
@@ -545,6 +510,10 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
     if (!body.username || !body.password) {
       return c.json({ success: false, error: '缺少 username 或 password' }, 400);
     }
+    const passwordError = validateRegistrationPassword(String(body.password));
+    if (passwordError) {
+      return c.json({ success: false, error: passwordError }, 400);
+    }
     try {
       const user = await createUser(c.env.DB, {
         username: String(body.username),
@@ -559,6 +528,10 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
         rateLimitBurst:
           body.rateLimitBurst !== undefined && body.rateLimitBurst !== '' && body.rateLimitBurst != null
             ? parseInt(body.rateLimitBurst) || null
+            : undefined,
+        maxUserTokens:
+          body.maxUserTokens !== undefined && body.maxUserTokens !== ''
+            ? parseInt(String(body.maxUserTokens), 10)
             : undefined,
       });
       c.executionCtx.waitUntil(
@@ -590,8 +563,14 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
     if (authErr) return authErr;
     const userId = parseInt(c.req.param('id'), 10);
     const body = await c.req.json();
+    if (body.password) {
+      const passwordError = validateRegistrationPassword(String(body.password));
+      if (passwordError) {
+        return c.json({ success: false, error: passwordError }, 400);
+      }
+    }
     const user = await updateUser(c.env.DB, userId, {
-      role: body.role,
+      role: body.role !== undefined ? (body.role === 'admin' ? 'admin' : 'user') : undefined,
       dailySendQuota: body.dailySendQuota !== undefined ? parseInt(body.dailySendQuota) : undefined,
       dailyLeaseQuota:
         body.dailyLeaseQuota !== undefined && body.dailyLeaseQuota !== ''
@@ -606,6 +585,10 @@ export function createAdminApp(): Hono<{ Bindings: Env }> {
           : undefined,
       enabled: body.enabled,
       password: body.password || undefined,
+      maxUserTokens:
+        body.maxUserTokens !== undefined && body.maxUserTokens !== ''
+          ? parseInt(String(body.maxUserTokens), 10)
+          : undefined,
     });
     if (!user) return c.json({ success: false, error: '用户不存在' }, 404);
     const detail: Record<string, unknown> = { userId: user.id, username: user.username };

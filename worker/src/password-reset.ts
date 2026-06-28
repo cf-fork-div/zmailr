@@ -8,7 +8,7 @@ import {
   getUserByUsername,
   incrementPasswordResetVerificationAttempts,
 } from './database';
-import { sendMail } from './sender';
+import { sendMail, SEND_FAILURE_CLIENT_MESSAGE } from './sender';
 import { normalizeRegistrationEmail } from './registration-domains';
 import { getCurrentTimestamp } from './utils';
 import {
@@ -21,6 +21,8 @@ import {
 } from './registration';
 
 export const PASSWORD_RESET_CODE_TTL_SEC = REGISTRATION_CODE_TTL_SEC;
+/** Anti-enumeration: always returned on send-code success (HTTP 200). */
+export const PASSWORD_RESET_CODE_SENT_MESSAGE = '若该邮箱已注册，验证码已发送';
 
 function buildPasswordResetEmailContent(code: string): { subject: string; text: string; html: string } {
   const subject = `zMailR 重置密码验证码 ${code}`;
@@ -74,8 +76,8 @@ export async function sendPasswordResetVerificationCode(
   }
 
   const user = await getUserByUsername(db, email);
-  if (!user) {
-    return { ok: false, error: '该邮箱未注册', status: 404 };
+  if (!user || !user.enabled) {
+    return { ok: true, deliveryHint: REGISTRATION_DELIVERY_HINT };
   }
 
   const code = generateRegistrationCode();
@@ -98,7 +100,7 @@ export async function sendPasswordResetVerificationCode(
 
   if (!sendResult.success) {
     const error = sendResult.error || '验证码发送失败，请稍后重试';
-    if (error.includes('BREVO_API_KEY') || error.includes('Brevo error')) {
+    if (error === SEND_FAILURE_CLIENT_MESSAGE || error.includes('BREVO_API_KEY')) {
       return {
         ok: false,
         error: '系统发信未配置或发件域名未认证，请联系管理员检查 Brevo 配置',
@@ -160,9 +162,9 @@ export async function verifyPasswordResetCode(
   }
 
   const user = await getUserByUsername(db, email);
-  if (!user) {
+  if (!user || !user.enabled) {
     await deletePasswordResetVerification(db, pending.id);
-    return { ok: false, error: '该邮箱未注册', status: 404 };
+    return { ok: false, error: '验证码无效或已过期，请重新获取', status: 400 };
   }
 
   await db
@@ -190,19 +192,19 @@ export async function resendPasswordResetVerificationCode(
   const email = normalizeRegistrationEmail(params.email);
   const pending = await getPasswordResetVerificationByEmail(db, email);
   if (!pending) {
-    return { ok: false, error: '请先填写邮箱和新密码获取验证码', status: 400 };
+    return { ok: true, deliveryHint: REGISTRATION_DELIVERY_HINT };
   }
 
   const now = getCurrentTimestamp();
   if (pending.expiresAt < now) {
     await deletePasswordResetVerification(db, pending.id);
-    return { ok: false, error: '验证码已过期，请重新填写密码获取', status: 400 };
+    return { ok: true, deliveryHint: REGISTRATION_DELIVERY_HINT };
   }
 
   const user = await getUserByUsername(db, email);
-  if (!user) {
+  if (!user || !user.enabled) {
     await deletePasswordResetVerification(db, pending.id);
-    return { ok: false, error: '该邮箱未注册', status: 404 };
+    return { ok: true, deliveryHint: REGISTRATION_DELIVERY_HINT };
   }
 
   const code = generateRegistrationCode();
@@ -222,7 +224,7 @@ export async function resendPasswordResetVerificationCode(
 
   if (!sendResult.success) {
     const error = sendResult.error || '验证码发送失败，请稍后重试';
-    if (error.includes('BREVO_API_KEY') || error.includes('Brevo error')) {
+    if (error === SEND_FAILURE_CLIENT_MESSAGE || error.includes('BREVO_API_KEY')) {
       return {
         ok: false,
         error: '系统发信未配置或发件域名未认证，请联系管理员检查 Brevo 配置',

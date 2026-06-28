@@ -30,6 +30,9 @@ export interface SendMailResult {
 
 export const MAX_ATTACHMENT_TOTAL_BYTES = 5 * 1024 * 1024;
 
+/** Client-safe message when Brevo or upstream send fails. */
+export const SEND_FAILURE_CLIENT_MESSAGE = '发信失败，请稍后重试';
+
 const SENDER_NAME = 'zMailR';
 
 export function validateSendAttachments(
@@ -120,7 +123,8 @@ async function sendViaBrevo(
 
   const responseText = await response.text();
   if (!response.ok) {
-    return { ok: false, error: `Brevo error: ${response.status} ${responseText}` };
+    console.error(`Brevo error: ${response.status} ${responseText}`);
+    return { ok: false, error: SEND_FAILURE_CLIENT_MESSAGE };
   }
 
   let messageId: string | undefined;
@@ -169,16 +173,15 @@ export async function sendMail(
 
     if (!result.ok) {
       console.error('发信失败:', result.error);
-      await saveSentEmail(db, buildSaveParams(data, fromEmail, 'failed', result.error));
-      return { success: false, error: result.error };
+      await saveSentEmail(db, buildSaveParams(data, fromEmail, 'failed', SEND_FAILURE_CLIENT_MESSAGE));
+      return { success: false, error: SEND_FAILURE_CLIENT_MESSAGE };
     }
 
     const record = await saveSentEmail(db, buildSaveParams(data, fromEmail, 'sent'));
     return { success: true, sentEmailId: record.id, brevoMessageId: result.messageId };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     console.error('发送邮件异常:', error);
-    await saveSentEmail(db, buildSaveParams(data, fromEmail, 'failed', message));
-    return { success: false, error: message };
+    await saveSentEmail(db, buildSaveParams(data, fromEmail, 'failed', SEND_FAILURE_CLIENT_MESSAGE));
+    return { success: false, error: SEND_FAILURE_CLIENT_MESSAGE };
   }
 }

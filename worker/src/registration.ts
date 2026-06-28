@@ -10,7 +10,7 @@ import {
   getUserByUsername,
   incrementRegistrationVerificationAttempts,
 } from './database';
-import { sendMail } from './sender';
+import { sendMail, SEND_FAILURE_CLIENT_MESSAGE } from './sender';
 import {
   normalizeRegistrationEmail,
   registrationEmailDomainHint,
@@ -73,6 +73,8 @@ function buildVerificationEmailContent(code: string): { subject: string; text: s
 }
 
 export const REGISTRATION_DELIVERY_HINT = '若未收到邮件，请检查垃圾箱等';
+/** Anti-enumeration: always returned on send-code success (HTTP 200). */
+export const REGISTRATION_CODE_SENT_MESSAGE = '若该邮箱未注册，验证码已发送';
 
 export async function sendRegistrationVerificationCode(
   db: D1Database,
@@ -113,7 +115,7 @@ export async function sendRegistrationVerificationCode(
 
   const existing = await getUserByUsername(db, email);
   if (existing) {
-    return { ok: false, error: '该邮箱已注册', status: 409 };
+    return { ok: true, deliveryHint: REGISTRATION_DELIVERY_HINT };
   }
 
   const code = generateRegistrationCode();
@@ -136,7 +138,7 @@ export async function sendRegistrationVerificationCode(
 
   if (!sendResult.success) {
     const error = sendResult.error || '验证码发送失败，请稍后重试';
-    if (error.includes('BREVO_API_KEY') || error.includes('Brevo error')) {
+    if (error === SEND_FAILURE_CLIENT_MESSAGE || error.includes('BREVO_API_KEY')) {
       return {
         ok: false,
         error: '系统发信未配置或发件域名未认证，请联系管理员检查 Brevo 配置',
@@ -231,19 +233,19 @@ export async function resendRegistrationVerificationCode(
   const email = normalizeRegistrationEmail(params.email);
   const pending = await getRegistrationVerificationByEmail(db, email);
   if (!pending) {
-    return { ok: false, error: '请先填写邮箱和密码获取验证码', status: 400 };
+    return { ok: true, deliveryHint: REGISTRATION_DELIVERY_HINT };
   }
 
   const now = getCurrentTimestamp();
   if (pending.expiresAt < now) {
     await deleteRegistrationVerification(db, pending.id);
-    return { ok: false, error: '验证码已过期，请重新填写密码获取', status: 400 };
+    return { ok: true, deliveryHint: REGISTRATION_DELIVERY_HINT };
   }
 
   const existing = await getUserByUsername(db, email);
   if (existing) {
     await deleteRegistrationVerification(db, pending.id);
-    return { ok: false, error: '该邮箱已注册', status: 409 };
+    return { ok: true, deliveryHint: REGISTRATION_DELIVERY_HINT };
   }
 
   const code = generateRegistrationCode();
@@ -263,7 +265,7 @@ export async function resendRegistrationVerificationCode(
 
   if (!sendResult.success) {
     const error = sendResult.error || '验证码发送失败，请稍后重试';
-    if (error.includes('BREVO_API_KEY') || error.includes('Brevo error')) {
+    if (error === SEND_FAILURE_CLIENT_MESSAGE || error.includes('BREVO_API_KEY')) {
       return {
         ok: false,
         error: '系统发信未配置或发件域名未认证，请联系管理员检查 Brevo 配置',

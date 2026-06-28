@@ -8,6 +8,36 @@ export async function hashPassword(password: string): Promise<string> {
   return `pbkdf2$${PBKDF2_ITERATIONS}$${saltHex}$${hashHex}`;
 }
 
+function timingSafeEqualBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  const subtle = crypto.subtle as SubtleCrypto & {
+    timingSafeEqual?: (x: BufferSource, y: BufferSource) => boolean;
+  };
+  if (typeof subtle.timingSafeEqual === 'function') {
+    return subtle.timingSafeEqual(a, b);
+  }
+  const nodeCrypto = crypto as Crypto & {
+    timingSafeEqual?: (x: Uint8Array, y: Uint8Array) => boolean;
+  };
+  if (typeof nodeCrypto.timingSafeEqual === 'function') {
+    return nodeCrypto.timingSafeEqual(a, b);
+  }
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a[i] ^ b[i];
+  }
+  return diff === 0;
+}
+
+/** Constant-time comparison for hex strings of equal length. */
+export function secureCompareHex(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  const ba = hexToBytes(a);
+  const bb = hexToBytes(b);
+  if (ba.length !== bb.length) return false;
+  return timingSafeEqualBytes(ba, bb);
+}
+
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const parts = stored.split('$');
   if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false;
@@ -16,7 +46,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   const salt = hexToBytes(parts[2]);
   const expectedHash = parts[3];
   const derived = await derivePbkdf2(password, salt, iterations);
-  return bytesToHex(new Uint8Array(derived)) === expectedHash;
+  return secureCompareHex(bytesToHex(new Uint8Array(derived)), expectedHash);
 }
 
 export async function hashToken(token: string): Promise<string> {

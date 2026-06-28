@@ -11,6 +11,11 @@ import {
   buildMailboxEmail,
   generateApiToken,
   API_TOKEN_PREFIX,
+  sanitizeAttachmentFilename,
+  formatContentDispositionAttachment,
+  validateCustomMailboxAddress,
+  escapeLikePattern,
+  isDangerousRegexPattern,
 } from './utils';
 import { DEFAULT_MAX_USER_TOKENS } from './types';
 import { normalizeMaxUserTokens } from './database';
@@ -165,6 +170,52 @@ describe('generateApiToken', () => {
     const a = generateApiToken();
     const b = generateApiToken();
     assert.notEqual(a, b);
+  });
+});
+
+describe('validateCustomMailboxAddress', () => {
+  it('accepts 8-12 lowercase alphanumeric', () => {
+    assert.deepEqual(validateCustomMailboxAddress('abc12345'), { ok: true, address: 'abc12345' });
+  });
+
+  it('rejects @ and invalid length', () => {
+    assert.equal(validateCustomMailboxAddress('a@b.com').ok, false);
+    assert.equal(validateCustomMailboxAddress('short').ok, false);
+    assert.equal(validateCustomMailboxAddress('toolongaddress1').ok, false);
+  });
+});
+
+describe('escapeLikePattern', () => {
+  it('escapes LIKE wildcards', () => {
+    assert.equal(escapeLikePattern('100%_test'), '100\\%\\_test');
+  });
+});
+
+describe('isDangerousRegexPattern', () => {
+  it('rejects alternation with outer quantifier', () => {
+    assert.equal(isDangerousRegexPattern('(a|a)*'), true);
+    assert.equal(isDangerousRegexPattern('(?:a+)+'), true);
+  });
+
+  it('allows simple capture groups', () => {
+    assert.equal(isDangerousRegexPattern('code is (\\d{6})'), false);
+  });
+});
+
+describe('sanitizeAttachmentFilename', () => {
+  it('strips CR/LF and quotes', () => {
+    assert.equal(sanitizeAttachmentFilename('evil\r\nX-Injected: yes"'), 'evilX-Injected: yes_');
+  });
+
+  it('falls back to attachment for empty result', () => {
+    assert.equal(sanitizeAttachmentFilename('\r\n'), 'attachment');
+  });
+});
+
+describe('formatContentDispositionAttachment', () => {
+  it('builds safe ASCII and RFC 5987 filename* parts', () => {
+    const header = formatContentDispositionAttachment('report.pdf');
+    assert.match(header, /^attachment; filename="report\.pdf"; filename\*=UTF-8''report\.pdf$/);
   });
 });
 

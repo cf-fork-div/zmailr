@@ -1,7 +1,7 @@
 import { D1Database } from '@cloudflare/workers-types';
 import type { Env, User } from './types';
-import { DEFAULT_LEGACY_SEND_DAILY_QUOTA } from './types';
-import { resolveUserFromSessionOrBearer } from './auth';
+import { authenticateApiToken, extractBearerToken, getAuthenticatedUser } from './auth';
+import { getUserById } from './database';
 
 export const WINDOW_MS = 60 * 1000;
 export const LOGIN_FAIL_WINDOW_MS = 15 * 60 * 1000;
@@ -19,14 +19,6 @@ export const DEFAULT_IP_GENERAL_LIMIT = 120;
 
 /** Shared per-IP bucket for all /api/* and admin /api/* routes. */
 export const DEFAULT_GLOBAL_IP_RATE_LIMIT = 60;
-
-/** @deprecated import from ./types */
-export { DEFAULT_LEGACY_SEND_DAILY_QUOTA } from './types';
-export const LEGACY_SEND_WINDOW_MS = 24 * 60 * 60 * 1000;
-
-export function getLegacySendRateLimitKey(ip: string): string {
-  return `legacy-send:${ip}`;
-}
 
 /** Admin UI plan presets (req/min + optional burst). */
 export const RATE_LIMIT_PLANS = {
@@ -49,6 +41,11 @@ export function getGlobalIpRateLimitKey(cfConnectingIp: string | undefined): str
 /** Per-user bucket when session or user Bearer token is present. */
 export function getUserRateLimitKey(userId: number): string {
   return `user:${userId}`;
+}
+
+/** Per Bearer token (user_tokens.id) — avoids shared NAT IP buckets for API clients. */
+export function getUserTokenRateLimitKey(tokenId: number): string {
+  return `user-token:${tokenId}`;
 }
 
 export function resolveUserRateLimits(user: Pick<User, 'rateLimitPerMin' | 'rateLimitBurst'>): {
@@ -116,11 +113,8 @@ export function retryAfterSeconds(now = Date.now(), windowMs = WINDOW_MS): numbe
 }
 
 export function getClientIp(request: Request): string {
-  return (
-    request.headers.get('CF-Connecting-IP') ||
-    request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
-    'unknown'
-  );
+  const cfIp = request.headers.get('CF-Connecting-IP')?.trim();
+  return cfIp || 'unknown';
 }
 
 export function resolveTokenRateLimit(env?: Pick<Env, 'RATE_LIMIT_PER_MIN'>): number {
@@ -203,21 +197,49 @@ export async function consumeUserRateLimit(
   };
 }
 
+export async function consumeBearerTokenRateLimit(
+  db: D1Database,
+  tokenId: number,
+  limitPerMin: number,
+  burst: number | null
+): Promise<RateLimitResult> {
+  const effectiveMax = effectiveRateLimitMax(limitPerMin, burst);
+  const raw = await consumeRateLimit(db, getUserTokenRateLimitKey(tokenId), effectiveMax);
+  return {
+    ok: raw.ok,
+    limit: limitPerMin,
+    remaining: raw.remaining,
+    retryAfter: raw.retryAfter,
+  };
+}
+
 /**
- * Authenticated users: per-user limits. Unauthenticated / legacy token: global IP limit.
+ * Session: per-user limits. Bearer: per-token limits. Otherwise: global IP limit.
  */
 export async function consumeRequestRateLimit(
   db: D1Database,
   request: Request,
   env: Env
 ): Promise<RateLimitResult> {
-  const user = await resolveUserFromSessionOrBearer(db, request, env);
-  if (user) {
-    const { limit, burst } = resolveUserRateLimits(user);
-    return consumeUserRateLimit(db, user.id, limit, burst);
+  if (extractBearerToken(request)) {
+    const auth = await authenticateApiToken(db, request);
+    if (auth) {
+      const user = await getUserById(db, auth.userId);
+      if (user?.enabled) {
+        const { limit, burst } = resolveUserRateLimits(user);
+        return consumeBearerTokenRateLimit(db, auth.tokenId, limit, burst);
+      }
+    }
   }
 
-  const rateKey = getGlobalIpRateLimitKey(request.headers.get('CF-Connecting-IP') ?? undefined);
+  const sessionUser = await getAuthenticatedUser(db, request, env);
+  if (sessionUser) {
+    const { limit, burst } = resolveUserRateLimits(sessionUser);
+    return consumeUserRateLimit(db, sessionUser.id, limit, burst);
+  }
+
+  const ip = getClientIp(request);
+  const rateKey = getGlobalIpRateLimitKey(ip === 'unknown' ? undefined : ip);
   return consumeRateLimit(db, rateKey, DEFAULT_GLOBAL_IP_RATE_LIMIT);
 }
 

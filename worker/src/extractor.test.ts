@@ -120,6 +120,10 @@ describe('matchWithRegex', () => {
   it('returns null for invalid regex', () => {
     assert.equal(matchWithRegex('test', '[invalid'), null);
   });
+
+  it('rejects dangerous patterns at runtime', () => {
+    assert.equal(matchWithRegex('aaaaaa', '(a|a)*'), null);
+  });
 });
 
 describe('sortExtractRulesForDomain', () => {

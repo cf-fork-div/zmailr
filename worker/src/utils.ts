@@ -21,6 +21,27 @@ export function generateRandomAddress(): string {
   const length = (lengthBytes[0] % 5) + 8;
   return generateRandomString(length);
 }
+
+/** Valid custom mailbox local-part: 8–12 lowercase alphanumeric. */
+export const MAILBOX_ADDRESS_PATTERN = /^[a-z0-9]{8,12}$/;
+
+export function validateCustomMailboxAddress(
+  address: string
+): { ok: true; address: string } | { ok: false; error: string } {
+  const normalized = address.trim().toLowerCase();
+  if (normalized.includes('@')) {
+    return { ok: false, error: '自定义地址不能包含 @' };
+  }
+  if (!MAILBOX_ADDRESS_PATTERN.test(normalized)) {
+    return { ok: false, error: '自定义地址须为 8–12 位小写字母或数字' };
+  }
+  return { ok: true, address: normalized };
+}
+
+/** Escape `%`, `_`, `\` for SQL LIKE … ESCAPE '\\'. */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[%_\\]/g, '\\$&');
+}
   
   /**
    * 生成唯一ID
@@ -142,14 +163,20 @@ export function generateRandomAddress(): string {
   export const MAX_EXTRACT_REGEX_LENGTH = 200;
   export const MAX_REGEX_MATCH_TEXT_LENGTH = 16_384;
 
-  /** Reject patterns prone to catastrophic backtracking (e.g. (a+)+). */
+  /** Reject patterns prone to catastrophic backtracking (e.g. (a+)+, (a|a)*). */
   export function isDangerousRegexPattern(pattern: string): boolean {
     if (pattern.length > MAX_EXTRACT_REGEX_LENGTH) return true;
-    if (/\([^)]*[+*][^)]*\)[+*?{]/.test(pattern)) return true;
+    // Capturing groups only — skip (?: non-capturing)
+    if (/\((?!\?:)[^)]*[+*][^)]*\)[+*?{]/.test(pattern)) return true;
     if (/\(\.\*\)[+*?]/.test(pattern)) return true;
     if (/\(\.\+\)[+*?]/.test(pattern)) return true;
+    if (/\(\?:[^)]*[+*|][^)]*\)[+*{]/.test(pattern)) return true;
+    if (/\((?!\?:)[^)]*\|[^)]*\)[+*?{]/.test(pattern)) return true;
+    if (/\((?!\?:)[^)]*\((?!\?:)[^)]*\)[^)]*\)[+*?{]/.test(pattern)) return true;
     return false;
   }
+
+  export const MAX_REGEX_EXEC_MS = 25;
 
   export function validateExtractRuleInput(params: {
     domain?: string;
@@ -232,3 +259,21 @@ export function generateRandomAddress(): string {
     }
     return { ok: true, domain: normalized };
   }
+
+/** Strip control chars and quotes from attachment filenames for Content-Disposition. */
+export function sanitizeAttachmentFilename(name: string): string {
+  const cleaned = name
+    .replace(/[\r\n\0]/g, '')
+    .replace(/["\\]/g, '_')
+    .trim();
+  const ascii = cleaned.replace(/[^\x20-\x7E]/g, '_').trim();
+  const base = (ascii || 'attachment').slice(0, 200);
+  return base.replace(/"/g, '_') || 'attachment';
+}
+
+/** Safe Content-Disposition for file downloads (ASCII fallback + RFC 5987 UTF-8). */
+export function formatContentDispositionAttachment(filename: string): string {
+  const safe = sanitizeAttachmentFilename(filename);
+  const encoded = encodeURIComponent(safe);
+  return `attachment; filename="${safe}"; filename*=UTF-8''${encoded}`;
+}

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { Env, ApiAuthContext, TokenScope, User, Mailbox, Email, DEFAULT_DAILY_LEASE_QUOTA } from './types';
+import { Env, ApiAuthContext, TokenScope, User, Mailbox, Email, DEFAULT_DAILY_LEASE_QUOTA, DEFAULT_MAX_USER_MAILBOXES } from './types';
 import { 
   createMailbox, 
   getMailbox,
@@ -46,6 +46,7 @@ import {
   getUserTokenSummary,
   checkSendQuota,
   checkLeaseQuota,
+  countActiveUserMailboxes,
   incrementSendUsage,
   recordMailboxLeaseUsageOnReceive,
   listMailboxesByUser,
@@ -59,11 +60,10 @@ import {
   getMaintenanceMode,
   getRegistrationSettings,
   writeAuditLog,
-  getLegacySendDailyQuota,
-  getMaxUserTokens,
+  resolveUserMaxTokens,
   getUserById,
 } from './database';
-import { generateRandomAddress, parseMailboxAddress, getCurrentTimestamp, validateExtractRuleInput, isValidEmailAddress } from './utils';
+import { generateRandomAddress, parseMailboxAddress, getCurrentTimestamp, validateExtractRuleInput, isValidEmailAddress, formatContentDispositionAttachment, validateCustomMailboxAddress } from './utils';
 import { reExtractSingleEmail, scheduleReExtractAfterRuleChange } from './re-extract';
 import {
   authenticateApiToken,
@@ -90,8 +90,6 @@ import {
   consumeLoginAttempt,
   recordLoginFailure,
   clearLoginFailures,
-  getLegacySendRateLimitKey,
-  LEGACY_SEND_WINDOW_MS,
 } from './rate-limit';
 import {
   buildMaintenanceDisplayMessage,
@@ -105,7 +103,7 @@ import { resolveAttachmentBytes } from './r2-attachments';
 import { matchCorsOrigin } from './cors';
 import { apiInternalError } from './http-response';
 import { runHealthChecks } from './health';
-import { applySecurityHeaders } from './security-headers';
+import { applySecurityHeaders, resolveMainCspProfile } from './security-headers';
 import { resolveTurnstileSettings, verifyTurnstileToken } from './turnstile';
 import {
   sendRegistrationVerificationCode,
@@ -116,11 +114,13 @@ import {
   buildRegistrationEmail,
   validateRegistrationLocalPart,
   isAllowedRegistrationDomain,
+  REGISTRATION_CODE_SENT_MESSAGE,
 } from './registration';
 import {
   sendPasswordResetVerificationCode,
   verifyPasswordResetCode,
   resendPasswordResetVerificationCode,
+  PASSWORD_RESET_CODE_SENT_MESSAGE,
 } from './password-reset';
 import { normalizeRegistrationEmail } from './registration-domains';
 
@@ -170,7 +170,9 @@ app.use('/*', cors({
 
 app.use('/*', async (c, next) => {
   await next();
-  applySecurityHeaders(c.res.headers);
+  const pathname = new URL(c.req.url).pathname;
+  const contentType = c.res.headers.get('Content-Type');
+  applySecurityHeaders(c.res.headers, resolveMainCspProfile(pathname, contentType));
 });
 
 app.onError((error, c) => {
@@ -285,14 +287,6 @@ app.get('/api/mailboxes', async (c) => {
 
   try {
     const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10), 1), 100);
-
-    if (auth.type === 'legacy') {
-      return c.json({ success: false, error: 'legacy Token 不支持列出邮箱' }, 403);
-    }
-
-    if (auth.type !== 'user' || auth.userId == null) {
-      return c.json({ success: false, error: '未授权' }, 401);
-    }
 
     const mailboxes = await listMailboxesByUser(c.env.DB, auth.userId, { limit });
 
@@ -528,7 +522,7 @@ app.get('/api/attachments/:id', async (c) => {
       }
       
       c.header('Content-Type', attachment.mimeType);
-      c.header('Content-Disposition', `attachment; filename="${encodeURIComponent(attachment.filename)}"`);
+      c.header('Content-Disposition', formatContentDispositionAttachment(attachment.filename));
       
       return c.body(bytes);
     }
@@ -697,7 +691,7 @@ app.post('/api/auth/register/send-code', async (c) => {
 
     return c.json({
       success: true,
-      message: '验证码已发送，请查收邮箱',
+      message: REGISTRATION_CODE_SENT_MESSAGE,
       email: normalizeRegistrationEmail(email),
       deliveryHint: result.deliveryHint,
     });
@@ -728,7 +722,7 @@ app.post('/api/auth/register/resend', async (c) => {
       return c.json({ success: false, error: result.error }, result.status ?? 400);
     }
 
-    return c.json({ success: true, message: '验证码已重新发送', deliveryHint: result.deliveryHint });
+    return c.json({ success: true, message: REGISTRATION_CODE_SENT_MESSAGE, deliveryHint: result.deliveryHint });
   } catch (error) {
     return c.json(apiInternalError('重发验证码失败', error), 500);
   }
@@ -819,7 +813,7 @@ app.post('/api/auth/password-reset/send-code', async (c) => {
 
     return c.json({
       success: true,
-      message: '验证码已发送，请查收邮箱',
+      message: PASSWORD_RESET_CODE_SENT_MESSAGE,
       email: normalizeRegistrationEmail(email),
       deliveryHint: result.deliveryHint,
     });
@@ -850,7 +844,7 @@ app.post('/api/auth/password-reset/resend', async (c) => {
       return c.json({ success: false, error: result.error }, result.status ?? 400);
     }
 
-    return c.json({ success: true, message: '验证码已重新发送', deliveryHint: result.deliveryHint });
+    return c.json({ success: true, message: PASSWORD_RESET_CODE_SENT_MESSAGE, deliveryHint: result.deliveryHint });
   } catch (error) {
     return c.json(apiInternalError('重发验证码失败', error), 500);
   }
@@ -991,7 +985,7 @@ app.get('/api/user/tokens', async (c) => {
   const user = c.get('user')!;
   const [tokens, maxTokens] = await Promise.all([
     listUserTokens(c.env.DB, user.id),
-    getMaxUserTokens(c.env.DB),
+    Promise.resolve(resolveUserMaxTokens(user)),
   ]);
   return c.json({ success: true, tokens, maxTokens });
 });
@@ -1010,7 +1004,7 @@ app.post('/api/user/tokens', async (c) => {
     return c.json({ success: false, error: '至少选择一个 scope' }, 400);
   }
   const existingCount = await countUserTokens(c.env.DB, user.id);
-  const maxTokens = await getMaxUserTokens(c.env.DB);
+  const maxTokens = resolveUserMaxTokens(user);
   if (existingCount >= maxTokens) {
     return c.json({
       success: false,
@@ -1488,14 +1482,29 @@ app.post('/api/user/mailboxes', async (c) => {
     }
 
     const ip = getClientIp(c.req.raw);
-    const isRandomAddress = !body.address || String(body.address).trim() === '';
-    const address = isRandomAddress ? generateRandomAddress() : String(body.address).trim();
+    const quotaCheck = await checkLeaseQuota(c.env.DB, user.id, user.dailyLeaseQuota);
+    if (!quotaCheck.ok) {
+      return c.json({ success: false, error: quotaCheck.error }, 429);
+    }
 
+    const activeMailboxes = await countActiveUserMailboxes(c.env.DB, user.id);
+    if (activeMailboxes >= DEFAULT_MAX_USER_MAILBOXES) {
+      return c.json(
+        { success: false, error: `已达到邮箱数量上限 (${DEFAULT_MAX_USER_MAILBOXES})` },
+        429
+      );
+    }
+
+    const isRandomAddress = !body.address || String(body.address).trim() === '';
+    let address: string;
     if (isRandomAddress) {
-      const quotaCheck = await checkLeaseQuota(c.env.DB, user.id, user.dailyLeaseQuota);
-      if (!quotaCheck.ok) {
-        return c.json({ success: false, error: quotaCheck.error }, 429);
+      address = generateRandomAddress();
+    } else {
+      const validated = validateCustomMailboxAddress(String(body.address));
+      if (!validated.ok) {
+        return c.json({ success: false, error: validated.error }, 400);
       }
+      address = validated.address;
     }
 
     const existingMailbox = await getMailbox(c.env.DB, address);
@@ -1587,7 +1596,6 @@ app.post('/api/user/send', async (c) => {
       from: body.from,
       mailboxHint: body.address ?? body.mailbox,
       allowedDomains,
-      mode: 'user',
       userId: user.id,
     });
     if (!fromResult.ok) {
@@ -1729,20 +1737,25 @@ app.post('/api/lease', async (c) => {
     const address = generateRandomAddress();
     const ip = getClientIp(c.req.raw);
 
-    if (auth.type === 'user' && auth.userId) {
-      const leaseQuota = auth.dailyLeaseQuota ?? DEFAULT_DAILY_LEASE_QUOTA;
-      const quotaCheck = await checkLeaseQuota(c.env.DB, auth.userId, leaseQuota);
-      if (!quotaCheck.ok) {
-        return c.json({ success: false, error: quotaCheck.error }, 429);
-      }
+    const leaseQuota = auth.dailyLeaseQuota ?? DEFAULT_DAILY_LEASE_QUOTA;
+    const quotaCheck = await checkLeaseQuota(c.env.DB, auth.userId, leaseQuota);
+    if (!quotaCheck.ok) {
+      return c.json({ success: false, error: quotaCheck.error }, 429);
+    }
+
+    const activeMailboxes = await countActiveUserMailboxes(c.env.DB, auth.userId);
+    if (activeMailboxes >= DEFAULT_MAX_USER_MAILBOXES) {
+      return c.json(
+        { success: false, error: `已达到邮箱数量上限 (${DEFAULT_MAX_USER_MAILBOXES})` },
+        429
+      );
     }
 
     const mailbox = await createMailbox(c.env.DB, {
       address,
       expiresInHours: 24,
       ipAddress: ip,
-      userId: auth.type === 'user' ? auth.userId : null,
-      legacyTokenId: auth.type === 'legacy' ? auth.tokenId : null,
+      userId: auth.userId,
       mailDomain,
     });
 
@@ -1769,7 +1782,7 @@ app.get('/api/mail', async (c) => {
       return c.json({ success: false, error: '缺少 to 参数' }, 400);
     }
 
-    const timeoutSec = Math.min(Math.max(parseInt(c.req.query('timeout') || '60'), 1), 55);
+    const timeoutSec = Math.min(Math.max(parseInt(c.req.query('timeout') || '30', 10), 1), 30);
     const sinceParam = c.req.query('since');
     const sinceTimestamp = sinceParam ? parseInt(sinceParam, 10) : getCurrentTimestamp();
     const requireCode = c.req.query('require_code') !== 'false';
@@ -1785,7 +1798,7 @@ app.get('/api/mail', async (c) => {
       return c.json({ success: false, error: '无权访问该邮箱' }, 403);
     }
 
-    const pollInterval = 2000;
+    const pollInterval = 3000;
     const deadline = Date.now() + timeoutSec * 1000;
     const excludeAfter = await getMailboxApiMailCursor(c.env.DB, mailbox.id);
 
@@ -1836,41 +1849,17 @@ app.post('/api/send', async (c) => {
       return c.json({ success: false, error: '缺少 text 或 html 内容' }, 400);
     }
 
-    if (auth.type === 'legacy') {
-      const ip = getClientIp(c.req.raw);
-      const legacyQuota = await getLegacySendDailyQuota(c.env.DB);
-      if (legacyQuota >= 0) {
-        const legacyLimit = await consumeRateLimit(
-          c.env.DB,
-          getLegacySendRateLimitKey(ip),
-          legacyQuota,
-          LEGACY_SEND_WINDOW_MS
-        );
-        if (!legacyLimit.ok) {
-          return c.json(
-            { success: false, error: `Legacy Token 每日发信配额已用尽 (${legacyQuota})` },
-            429,
-            rateLimitHeaders(legacyLimit)
-          );
-        }
-      }
-    } else if (auth.type === 'user' && auth.userId != null && auth.dailySendQuota != null) {
-      const quotaCheck = await checkSendQuota(c.env.DB, auth.userId, auth.dailySendQuota);
-      if (!quotaCheck.ok) {
-        return c.json({ success: false, error: quotaCheck.error }, 429);
-      }
+    const quotaCheck = await checkSendQuota(c.env.DB, auth.userId, auth.dailySendQuota);
+    if (!quotaCheck.ok) {
+      return c.json({ success: false, error: quotaCheck.error }, 429);
     }
 
     const allowedDomains = c.get('enabledMailDomains') ?? (await resolveEnabledMailDomainNames(c.env.DB, c.env));
-    const fromMode = auth.type === 'legacy' ? 'legacy' : 'user';
     const fromResult = await resolveOutboundFrom(c.env.DB, c.env, {
       from: body.from,
       mailboxHint: body.address ?? body.mailbox,
       allowedDomains,
-      mode: fromMode,
       userId: auth.userId,
-      legacyTokenId: auth.type === 'legacy' ? auth.tokenId : undefined,
-      ipAddress: getClientIp(c.req.raw),
     });
     if (!fromResult.ok) {
       return c.json({ success: false, error: fromResult.error }, 400);
@@ -1889,7 +1878,7 @@ app.post('/api/send', async (c) => {
       html: body.html,
       from: fromEmail,
       userId: auth.userId ?? null,
-      tokenId: auth.tokenId ?? null,
+      tokenId: auth.tokenId,
       attachments: attachmentResult.attachments,
     });
 
@@ -1897,9 +1886,7 @@ app.post('/api/send', async (c) => {
       return c.json({ success: false, error: result.error }, 502);
     }
 
-    if (auth.type === 'user' && auth.userId) {
-      await incrementSendUsage(c.env.DB, auth.userId);
-    }
+    await incrementSendUsage(c.env.DB, auth.userId);
 
     return c.json({ success: true, sentEmailId: result.sentEmailId });
   } catch (error) {
