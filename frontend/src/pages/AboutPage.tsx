@@ -43,7 +43,16 @@ const AboutPage: React.FC = () => {
         <h2 className="text-xl font-semibold mt-8 mb-2">{t('about.opensource.title')}</h2>
         <p>{t('about.opensource.intro')}</p>
         <ul>
-          <li><strong>{t('about.opensource.github.title')}</strong>：<a href="https://github.com/zaunist/zmail" className="text-blue-600 hover:underline">https://github.com/zaunist/zmail</a></li>
+          <li>
+            <strong>{t('about.opensource.github.title')}</strong>：
+            <a href="https://github.com/jia0327/zmailr" target="_blank" rel="noopener noreferrer" className="inline-block align-middle">
+              <img
+                src="https://img.shields.io/github/stars/jia0327/zmailr?style=social"
+                alt="GitHub stars"
+                height={20}
+              />
+            </a>
+          </li>
           <li><strong>{t('about.opensource.license.title')}</strong>：{t('about.opensource.license.desc')}</li>
           <li><strong>{t('about.opensource.contribute.title')}</strong>：{t('about.opensource.contribute.desc')}</li>
         </ul>

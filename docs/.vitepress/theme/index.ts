@@ -3,6 +3,7 @@ import { inBrowser } from 'vitepress';
 import SiteOrigin from './components/SiteOrigin.vue';
 import ExampleMailbox from './components/ExampleMailbox.vue';
 import SiteLink from './components/SiteLink.vue';
+import GitHubStars from './components/GitHubStars.vue';
 import './custom.css';
 
 const VP_THEME_KEY = 'vitepress-theme-appearance';
@@ -40,6 +41,7 @@ export default {
     app.component('SiteOrigin', SiteOrigin);
     app.component('ExampleMailbox', ExampleMailbox);
     app.component('SiteLink', SiteLink);
+    app.component('GitHubStars', GitHubStars);
     if (inBrowser) {
       syncThemeKeys();
     }

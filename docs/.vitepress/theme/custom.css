@@ -133,3 +133,14 @@ html:not(.dark) .zmailr-callout {
 .vp-doc table :not(pre) > code {
   vertical-align: middle;
 }
+
+.github-stars-link {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+.github-stars-link img {
+  display: block;
+  height: 20px;
+}

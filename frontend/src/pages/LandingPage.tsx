@@ -129,9 +129,14 @@ const LandingPage: React.FC = () => {
               href="https://github.com/jia0327/zmailr"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted/50 hidden sm:inline"
+              className="hidden sm:inline-flex items-center px-1 py-1 rounded-md hover:bg-muted/50"
+              aria-label="GitHub stars"
             >
-              GitHub
+              <img
+                src="https://img.shields.io/github/stars/jia0327/zmailr?style=social"
+                alt="GitHub stars"
+                height={20}
+              />
             </a>
             <ThemeSwitcher />
             <Link

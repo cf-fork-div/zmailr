@@ -38,7 +38,7 @@ export default defineConfig({
 
     nav: [
       { text: '控制台', link: '../../dashboard/usage', target: '_self', rel: undefined },
-      { text: 'GitHub', link: 'https://github.com/jia0327/zmailr' },
+      { component: 'GitHubStars' },
     ],
 
     sidebar: [

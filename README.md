@@ -11,7 +11,7 @@
   <a href="./docs/screenshots/README.md"><strong>📸 效果图</strong></a> ·
   <a href="./README.en.md">English</a>
   <br>
-  <a href="https://github.com/cf-fork-div/zmailr/stargazers"><img src="https://img.shields.io/github/stars/cf-fork-div/zmailr?style=social"></a>
+  <a href="https://github.com/jia0327/zmailr/stargazers"><img src="https://img.shields.io/github/stars/jia0327/zmailr?style=social"></a>
   <img src="https://img.shields.io/badge/License-MIT-yellow.svg">
   <img src="https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white">
 </p>
